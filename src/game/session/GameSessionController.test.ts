@@ -7,6 +7,8 @@ function createRuntime(): BattleRuntime {
     destroy: vi.fn(),
     selectInitialArtifact: vi.fn(),
     selectUpgrade: vi.fn(),
+    selectAscension: vi.fn(),
+    skipAscension: vi.fn(),
     skipOnboarding: vi.fn(),
     setInputIntent: vi.fn(),
     setPaused: vi.fn(),
@@ -65,5 +67,16 @@ describe('历练会话', () => {
     session.skipOnboarding()
 
     expect(runtime.skipOnboarding).toHaveBeenCalledOnce()
+  })
+
+  it('将升阶选择和暂缓命令转交给战场运行时', () => {
+    const runtime = createRuntime()
+    const session = createGameSessionController(runtime)
+
+    session.selectAscension('ascend-qing-feng-si-xiang')
+    session.skipAscension()
+
+    expect(runtime.selectAscension).toHaveBeenCalledWith('ascend-qing-feng-si-xiang')
+    expect(runtime.skipAscension).toHaveBeenCalledOnce()
   })
 })

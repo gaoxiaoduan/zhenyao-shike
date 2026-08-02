@@ -39,6 +39,14 @@ export function advanceRunProgress(progress: RunProgress, deltaMs: number): RunP
   }
 }
 
+export function endRun(progress: RunProgress): RunProgress {
+  if (progress.phase === 'ended') {
+    return progress
+  }
+
+  return { ...progress, phase: 'ended' }
+}
+
 export function grantExperience(progress: RunProgress, amount: number): ExperienceResult {
   if (amount <= 0 || progress.phase === 'ended') {
     return { progress, levelsGained: 0 }

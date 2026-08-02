@@ -2,6 +2,14 @@ import type { BaseArtifactId } from './initialArtifactSelection'
 
 export const MAX_ARTIFACT_SLOTS = 4
 export const MAX_ARTIFACT_LEVEL = 5
+export const MAX_ASCENDED_ARTIFACTS = 2
+
+export type AscendedArtifactId =
+  | 'zhu-xie-jian-zhen'
+  | 'liu-guang-jian-yi'
+  | 'jiu-xiao-lei-zhen'
+
+export type ArtifactId = BaseArtifactId | AscendedArtifactId
 
 export interface ArtifactStats {
   readonly damage: number
@@ -11,14 +19,14 @@ export interface ArtifactStats {
 }
 
 export interface ArtifactDefinition {
-  readonly id: BaseArtifactId
+  readonly id: ArtifactId
   readonly name: string
   readonly description: string
   readonly attackColor: number
   readonly getStats: (level: number) => ArtifactStats
 }
 
-export const ARTIFACT_DEFINITIONS: Record<BaseArtifactId, ArtifactDefinition> = {
+export const ARTIFACT_DEFINITIONS: Record<ArtifactId, ArtifactDefinition> = {
   'qing-feng-jian-xia': {
     id: 'qing-feng-jian-xia',
     name: '青锋剑匣',
@@ -90,10 +98,46 @@ export const ARTIFACT_DEFINITIONS: Record<BaseArtifactId, ArtifactDefinition> = 
       }
     },
   },
+  'zhu-xie-jian-zhen': {
+    id: 'zhu-xie-jian-zhen',
+    name: '诛邪剑阵',
+    description: '青锋与四象合流，剑阵覆盖周身并周期性斩落妖群。已成型，不再升级。',
+    attackColor: 0xf0abfc,
+    getStats: () => ({
+      damage: 68,
+      intervalMs: 320,
+      moveSpeedMultiplier: 1,
+      aoeRadius: 112,
+    }),
+  },
+  'liu-guang-jian-yi': {
+    id: 'liu-guang-jian-yi',
+    name: '流光剑翼',
+    description: '青锋化作六翼流光，提升身法并向四方投射穿透剑芒。已成型，不再升级。',
+    attackColor: 0x93c5fd,
+    getStats: () => ({
+      damage: 52,
+      intervalMs: 360,
+      moveSpeedMultiplier: 1.7,
+      aoeRadius: 0,
+    }),
+  },
+  'jiu-xiao-lei-zhen': {
+    id: 'jiu-xiao-lei-zhen',
+    name: '九霄雷阵',
+    description: '雷篆引动四象天威，在最密集处降下范围雷击。已成型，不再升级。',
+    attackColor: 0xfef08a,
+    getStats: () => ({
+      damage: 132,
+      intervalMs: 900,
+      moveSpeedMultiplier: 1,
+      aoeRadius: 172,
+    }),
+  },
 }
 
 export interface ArtifactSlot {
-  readonly id: BaseArtifactId
+  readonly id: ArtifactId
   readonly level: number
 }
 
@@ -113,6 +157,63 @@ export interface UpgradeChoice {
   readonly attackColor: number
 }
 
+export interface AscensionRecipe {
+  readonly choiceId: string
+  readonly sourceIds: readonly [BaseArtifactId, BaseArtifactId]
+  readonly resultId: AscendedArtifactId
+  readonly name: string
+  readonly description: string
+  readonly sourceNames: readonly [string, string]
+  readonly slotCountBefore: number
+  readonly slotCountAfter: number
+  readonly attackColor: number
+}
+
+const ASCENSION_RECIPES: readonly AscensionRecipe[] = [
+  {
+    choiceId: 'ascend-qing-feng-si-xiang',
+    sourceIds: ['qing-feng-jian-xia', 'si-xiang-zhen-qi'],
+    resultId: 'zhu-xie-jian-zhen',
+    name: ARTIFACT_DEFINITIONS['zhu-xie-jian-zhen'].name,
+    description: ARTIFACT_DEFINITIONS['zhu-xie-jian-zhen'].description,
+    sourceNames: [
+      ARTIFACT_DEFINITIONS['qing-feng-jian-xia'].name,
+      ARTIFACT_DEFINITIONS['si-xiang-zhen-qi'].name,
+    ],
+    slotCountBefore: 2,
+    slotCountAfter: 1,
+    attackColor: ARTIFACT_DEFINITIONS['zhu-xie-jian-zhen'].attackColor,
+  },
+  {
+    choiceId: 'ascend-qing-feng-fu-yao',
+    sourceIds: ['qing-feng-jian-xia', 'fu-yao-yu-yi'],
+    resultId: 'liu-guang-jian-yi',
+    name: ARTIFACT_DEFINITIONS['liu-guang-jian-yi'].name,
+    description: ARTIFACT_DEFINITIONS['liu-guang-jian-yi'].description,
+    sourceNames: [
+      ARTIFACT_DEFINITIONS['qing-feng-jian-xia'].name,
+      ARTIFACT_DEFINITIONS['fu-yao-yu-yi'].name,
+    ],
+    slotCountBefore: 2,
+    slotCountAfter: 1,
+    attackColor: ARTIFACT_DEFINITIONS['liu-guang-jian-yi'].attackColor,
+  },
+  {
+    choiceId: 'ascend-lei-zhuan-si-xiang',
+    sourceIds: ['lei-zhuan-fu-ce', 'si-xiang-zhen-qi'],
+    resultId: 'jiu-xiao-lei-zhen',
+    name: ARTIFACT_DEFINITIONS['jiu-xiao-lei-zhen'].name,
+    description: ARTIFACT_DEFINITIONS['jiu-xiao-lei-zhen'].description,
+    sourceNames: [
+      ARTIFACT_DEFINITIONS['lei-zhuan-fu-ce'].name,
+      ARTIFACT_DEFINITIONS['si-xiang-zhen-qi'].name,
+    ],
+    slotCountBefore: 2,
+    slotCountAfter: 1,
+    attackColor: ARTIFACT_DEFINITIONS['jiu-xiao-lei-zhen'].attackColor,
+  },
+]
+
 export function createArtifactInventory(initialArtifactId?: BaseArtifactId): ArtifactInventory {
   if (!initialArtifactId) {
     return { slots: [] }
@@ -122,13 +223,55 @@ export function createArtifactInventory(initialArtifactId?: BaseArtifactId): Art
   }
 }
 
-export function getArtifactLevel(inventory: ArtifactInventory, artifactId: BaseArtifactId): number {
+export function getArtifactLevel(inventory: ArtifactInventory, artifactId: ArtifactId): number {
   const found = inventory.slots.find((slot) => slot.id === artifactId)
   return found ? found.level : 0
 }
 
-export function getArtifactStats(artifactId: BaseArtifactId, level: number): ArtifactStats {
+export function getArtifactStats(artifactId: ArtifactId, level: number): ArtifactStats {
   return ARTIFACT_DEFINITIONS[artifactId].getStats(level)
+}
+
+export function isAscendedArtifactId(artifactId: ArtifactId): artifactId is AscendedArtifactId {
+  return (
+    artifactId === 'zhu-xie-jian-zhen' ||
+    artifactId === 'liu-guang-jian-yi' ||
+    artifactId === 'jiu-xiao-lei-zhen'
+  )
+}
+
+export function getAvailableAscensionChoices(
+  inventory: ArtifactInventory,
+): readonly AscensionRecipe[] {
+  const ascendedCount = inventory.slots.filter((slot) => isAscendedArtifactId(slot.id)).length
+  if (ascendedCount >= MAX_ASCENDED_ARTIFACTS) {
+    return []
+  }
+
+  return ASCENSION_RECIPES.filter((recipe) => {
+    if (inventory.slots.some((slot) => slot.id === recipe.resultId)) {
+      return false
+    }
+
+    return recipe.sourceIds.every((artifactId) => getArtifactLevel(inventory, artifactId) >= MAX_ARTIFACT_LEVEL)
+  })
+}
+
+export function applyAscensionChoice(
+  inventory: ArtifactInventory,
+  choiceId: string,
+): ArtifactInventory {
+  const recipe = ASCENSION_RECIPES.find((candidate) => candidate.choiceId === choiceId)
+  if (!recipe || !getAvailableAscensionChoices(inventory).some((choice) => choice.choiceId === choiceId)) {
+    throw new RangeError('所选升阶配方当前不可用。')
+  }
+
+  return {
+    slots: [
+      ...inventory.slots.filter((slot) => !recipe.sourceIds.some((sourceId) => sourceId === slot.id)),
+      { id: recipe.resultId, level: 1 },
+    ],
+  }
 }
 
 export function generateUpgradeChoices(

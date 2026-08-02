@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyUpgradeChoice,
+  applyAscensionChoice,
   createArtifactInventory,
+  getAvailableAscensionChoices,
   generateUpgradeChoices,
   getArtifactLevel,
   getArtifactStats,
@@ -71,5 +73,46 @@ describe('artifactInventory domain rules', () => {
 
     // @ts-expect-error type checking test
     expect(() => applyUpgradeChoice(inv, 'unowned-5th-artifact')).toThrow()
+  })
+
+  it('offers a public ascension recipe when both source artifacts reach Lv.5', () => {
+    let inv = createArtifactInventory('qing-feng-jian-xia')
+    for (let index = 1; index < MAX_ARTIFACT_LEVEL; index += 1) {
+      inv = applyUpgradeChoice(inv, 'qing-feng-jian-xia')
+    }
+    inv = applyUpgradeChoice(inv, 'si-xiang-zhen-qi')
+    for (let index = 1; index < MAX_ARTIFACT_LEVEL; index += 1) {
+      inv = applyUpgradeChoice(inv, 'si-xiang-zhen-qi')
+    }
+
+    const choices = getAvailableAscensionChoices(inv)
+
+    expect(choices).toHaveLength(1)
+    expect(choices[0]).toMatchObject({
+      resultId: 'zhu-xie-jian-zhen',
+      sourceIds: ['qing-feng-jian-xia', 'si-xiang-zhen-qi'],
+      slotCountBefore: 2,
+      slotCountAfter: 1,
+    })
+  })
+
+  it('consumes the two source artifacts and releases a slot after ascension', () => {
+    let inv = createArtifactInventory('qing-feng-jian-xia')
+    for (let index = 1; index < MAX_ARTIFACT_LEVEL; index += 1) {
+      inv = applyUpgradeChoice(inv, 'qing-feng-jian-xia')
+    }
+    inv = applyUpgradeChoice(inv, 'si-xiang-zhen-qi')
+    for (let index = 1; index < MAX_ARTIFACT_LEVEL; index += 1) {
+      inv = applyUpgradeChoice(inv, 'si-xiang-zhen-qi')
+    }
+
+    const [choice] = getAvailableAscensionChoices(inv)
+    expect(choice).toBeDefined()
+
+    const ascended = applyAscensionChoice(inv, choice!.choiceId)
+
+    expect(ascended.slots).toEqual([{ id: 'zhu-xie-jian-zhen', level: 1 }])
+    expect(getArtifactLevel(ascended, 'qing-feng-jian-xia')).toBe(0)
+    expect(getArtifactLevel(ascended, 'si-xiang-zhen-qi')).toBe(0)
   })
 })

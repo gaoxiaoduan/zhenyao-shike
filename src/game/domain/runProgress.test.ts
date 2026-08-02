@@ -3,6 +3,7 @@ import {
   GROWTH_PHASE_DURATION_MS,
   advanceRunProgress,
   createRunProgress,
+  endRun,
   experienceRequiredForLevel,
   formatElapsedTime,
   grantExperience,
@@ -20,6 +21,15 @@ describe('run progress', () => {
     const bossProgress = advanceRunProgress(createRunProgress(), GROWTH_PHASE_DURATION_MS)
 
     expect(advanceRunProgress(bossProgress, 5_000)).toBe(bossProgress)
+  })
+
+  it('marks the run as ended without changing the final elapsed time', () => {
+    const bossProgress = advanceRunProgress(createRunProgress(), GROWTH_PHASE_DURATION_MS)
+
+    const endedProgress = endRun(bossProgress)
+
+    expect(endedProgress.phase).toBe('ended')
+    expect(endedProgress.elapsedMs).toBe(GROWTH_PHASE_DURATION_MS)
   })
 
   it('carries excess experience into following levels', () => {

@@ -68,7 +68,11 @@ function finishRun(result: 'victory' | 'defeat') {
           {{ lastResult === 'victory' ? '妖王伏诛' : '此行未竟' }}
         </h2>
         <p class="mt-4 leading-7 text-stone-400">
-          核心切片正在搭建中。每次重开都会生成新的妖群节奏。
+          {{
+            lastResult === 'victory'
+              ? '啸月狼王已伏，青石岭暂得安宁。'
+              : '妖潮尚未平息，整顿法器后再入青石岭。'
+          }}
         </p>
         <div class="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
           <button class="game-button" type="button" @click="startRun">再次历练</button>
