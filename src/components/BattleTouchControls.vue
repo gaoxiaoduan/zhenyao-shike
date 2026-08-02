@@ -1,0 +1,114 @@
+<script setup lang="ts">
+import { shallowRef } from 'vue'
+import { createInputIntent } from '../game/domain/inputIntent'
+
+interface JoystickCenter {
+  readonly x: number
+  readonly y: number
+}
+
+const emit = defineEmits<{
+  move: [intent: ReturnType<typeof createInputIntent>]
+  cast: []
+}>()
+
+const joystickCenter = shallowRef<JoystickCenter | null>(null)
+const thumbOffset = shallowRef({ x: 0, y: 0 })
+const activePointerId = shallowRef<number | null>(null)
+
+function updateMovement(event: PointerEvent) {
+  const center = joystickCenter.value
+  if (!center || activePointerId.value !== event.pointerId) {
+    return
+  }
+
+  const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  const deltaX = event.clientX - bounds.left - center.x
+  const deltaY = event.clientY - bounds.top - center.y
+  const magnitude = Math.hypot(deltaX, deltaY)
+  const clamp = magnitude > 58 ? 58 / magnitude : 1
+  const offset = { x: deltaX * clamp, y: deltaY * clamp }
+
+  thumbOffset.value = offset
+  emit('move', createInputIntent({ moveX: offset.x / 58, moveY: offset.y / 58 }))
+}
+
+function beginMovement(event: PointerEvent) {
+  const zone = event.currentTarget as HTMLElement
+  const bounds = zone.getBoundingClientRect()
+  activePointerId.value = event.pointerId
+  joystickCenter.value = { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
+  thumbOffset.value = { x: 0, y: 0 }
+  zone.setPointerCapture(event.pointerId)
+  emit('move', createInputIntent())
+}
+
+function endMovement(event: PointerEvent) {
+  if (activePointerId.value !== event.pointerId) {
+    return
+  }
+
+  activePointerId.value = null
+  joystickCenter.value = null
+  thumbOffset.value = { x: 0, y: 0 }
+  emit('move', createInputIntent())
+}
+
+function castSpell() {
+  emit('cast')
+}
+
+</script>
+
+<template>
+  <div class="battle-touch-controls pointer-events-none absolute z-20">
+    <div
+      class="battle-touch-controls__move-zone pointer-events-auto absolute inset-y-0 left-0 w-[45%] touch-none"
+      @pointercancel="endMovement"
+      @pointerdown="beginMovement"
+      @pointermove="updateMovement"
+      @pointerup="endMovement"
+    >
+      <div
+        v-if="joystickCenter"
+        class="battle-touch-controls__joystick absolute h-[7.25rem] w-[7.25rem] rounded-full border border-emerald-100/45 bg-emerald-950/35"
+        :style="{ left: `${joystickCenter.x}px`, top: `${joystickCenter.y}px` }"
+      >
+        <div
+          class="battle-touch-controls__thumb absolute left-1/2 top-1/2 h-[3.25rem] w-[3.25rem] rounded-full border border-emerald-100/75 bg-emerald-300/25"
+          :style="{ transform: `translate(calc(-50% + ${thumbOffset.x}px), calc(-50% + ${thumbOffset.y}px))` }"
+        />
+      </div>
+    </div>
+    <button
+      class="battle-touch-controls__spell pointer-events-auto absolute bottom-6 right-6 grid h-[5.5rem] w-[5.5rem] place-items-center rounded-full border border-sky-100/75 bg-sky-300/18 text-xs font-bold tracking-[0.16em] text-sky-50 shadow-[0_0_28px_rgba(125,211,252,.22)] touch-none active:scale-95"
+      type="button"
+      @pointerdown.prevent="castSpell"
+    >
+      玄光护身
+    </button>
+  </div>
+</template>
+
+<style scoped>
+.battle-touch-controls__joystick {
+  transform: translate(-50%, -50%);
+}
+
+.battle-touch-controls__thumb {
+  transition: transform 35ms linear;
+}
+
+.battle-touch-controls {
+  bottom: env(safe-area-inset-bottom);
+  left: env(safe-area-inset-left);
+  right: env(safe-area-inset-right);
+  top: env(safe-area-inset-top);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .battle-touch-controls {
+    display: none;
+  }
+}
+</style>
