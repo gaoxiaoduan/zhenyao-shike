@@ -5,6 +5,8 @@ import { createGameSessionController, type BattleRuntime } from './GameSessionCo
 function createRuntime(): BattleRuntime {
   return {
     destroy: vi.fn(),
+    selectInitialArtifact: vi.fn(),
+    skipOnboarding: vi.fn(),
     setInputIntent: vi.fn(),
     setPaused: vi.fn(),
   }
@@ -44,5 +46,23 @@ describe('历练会话', () => {
     session.setInputIntent(intent)
 
     expect(runtime.setInputIntent).toHaveBeenCalledWith(intent)
+  })
+
+  it('将首次法器选择转交给尚未启动的战场', () => {
+    const runtime = createRuntime()
+    const session = createGameSessionController(runtime)
+
+    session.selectInitialArtifact('qing-feng-jian-xia')
+
+    expect(runtime.selectInitialArtifact).toHaveBeenCalledWith('qing-feng-jian-xia')
+  })
+
+  it('跳过教学后让战场恢复普通节奏', () => {
+    const runtime = createRuntime()
+    const session = createGameSessionController(runtime)
+
+    session.skipOnboarding()
+
+    expect(runtime.skipOnboarding).toHaveBeenCalledOnce()
   })
 })

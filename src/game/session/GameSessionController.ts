@@ -1,7 +1,10 @@
 import type { InputIntent } from '../domain/inputIntent'
+import type { BaseArtifactId } from '../domain/initialArtifactSelection'
 import type { GameSession, PauseReason } from './GameSession'
 
 export interface BattleRuntime {
+  selectInitialArtifact(artifactId: BaseArtifactId): void
+  skipOnboarding(): void
   setInputIntent(intent: InputIntent): void
   setPaused(paused: boolean): void
   destroy(): void
@@ -38,6 +41,20 @@ export function createGameSessionController(runtime: BattleRuntime): GameSession
 
       pauseReasons.delete(reason)
       syncPauseState()
+    },
+    selectInitialArtifact(artifactId) {
+      if (disposed) {
+        return
+      }
+
+      runtime.selectInitialArtifact(artifactId)
+    },
+    skipOnboarding() {
+      if (disposed) {
+        return
+      }
+
+      runtime.skipOnboarding()
     },
     setInputIntent(intent) {
       if (disposed) {

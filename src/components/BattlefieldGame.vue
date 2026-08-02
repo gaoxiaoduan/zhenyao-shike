@@ -1,12 +1,28 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, shallowRef, useTemplateRef } from 'vue'
+import { computed, onMounted, onUnmounted, shallowRef, useTemplateRef } from 'vue'
 import { createInputIntent, mergeMovementIntent, type InputIntent } from '../game/domain/inputIntent'
+import type { BaseArtifact } from '../game/domain/initialArtifactSelection'
+import {
+  completeOnboardingStep,
+  createOnboardingProgress,
+  nextOnboardingStep,
+  type OnboardingProgress,
+} from '../game/domain/onboardingProgress'
 import { createBattleSession } from '../game/phaser/createBattleSession'
-import type { GameSession, GameSessionEvent } from '../game/session/GameSession'
+import type { GameSession, GameSessionEvent, OnboardingStep } from '../game/session/GameSession'
 import BattleTouchControls from './BattleTouchControls.vue'
+import InitialArtifactSelectionModal from './InitialArtifactSelectionModal.vue'
+import OnboardingGuide from './OnboardingGuide.vue'
+
+const props = withDefaults(defineProps<{
+  showOnboarding?: boolean
+}>(), {
+  showOnboarding: true,
+})
 
 const emit = defineEmits<{
   finished: [result: 'victory' | 'defeat']
+  onboardingCompleted: []
 }>()
 
 const battleMount = useTemplateRef<HTMLElement>('battleMount')
@@ -14,8 +30,23 @@ const session = shallowRef<GameSession | null>(null)
 const showPause = shallowRef(false)
 const orientationPaused = shallowRef(false)
 const pressedKeys = new Set<string>()
+const initialArtifactCandidates = shallowRef<readonly BaseArtifact[]>([])
+const onboardingProgress = shallowRef<OnboardingProgress>(createOnboardingProgress())
+
+const initialSelectionOpen = computed(() => initialArtifactCandidates.value.length > 0)
+const onboardingStep = computed(() => props.showOnboarding ? nextOnboardingStep(onboardingProgress.value) : null)
 
 function handleSessionEvent(event: GameSessionEvent) {
+  if (event.type === 'initial-artifact-selection-requested') {
+    initialArtifactCandidates.value = event.candidates
+    return
+  }
+
+  if (event.type === 'onboarding-step-completed') {
+    advanceOnboarding(event.step)
+    return
+  }
+
   if (event.type === 'pause-requested') {
     showPause.value = true
     session.value?.pause('manual')
@@ -23,6 +54,27 @@ function handleSessionEvent(event: GameSessionEvent) {
   }
 
   emit('finished', event.result)
+}
+
+function selectInitialArtifact(artifactId: BaseArtifact['id']) {
+  session.value?.selectInitialArtifact(artifactId)
+  initialArtifactCandidates.value = []
+}
+
+function advanceOnboarding(completedStep: OnboardingStep) {
+  if (!props.showOnboarding) {
+    return
+  }
+
+  onboardingProgress.value = completeOnboardingStep(onboardingProgress.value, completedStep)
+  if (nextOnboardingStep(onboardingProgress.value) === null) {
+    emit('onboardingCompleted')
+  }
+}
+
+function skipOnboarding() {
+  session.value?.skipOnboarding()
+  emit('onboardingCompleted')
 }
 
 function setTouchIntent(intent: InputIntent) {
@@ -161,6 +213,14 @@ onUnmounted(() => {
     </button>
 
     <BattleTouchControls @cast="castSpell" @move="setTouchIntent" />
+
+    <OnboardingGuide v-if="onboardingStep" :step="onboardingStep" @skip="skipOnboarding" />
+
+    <InitialArtifactSelectionModal
+      v-if="initialSelectionOpen"
+      :candidates="initialArtifactCandidates"
+      @select="selectInitialArtifact"
+    />
 
     <div
       v-if="showPause || orientationPaused"

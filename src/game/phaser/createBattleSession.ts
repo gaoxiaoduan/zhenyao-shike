@@ -1,12 +1,18 @@
 import * as Phaser from 'phaser'
 import {
-  BASE_FLYING_SWORD_DAMAGE,
   QING_SHI_RIDGE_ENEMY_IDS,
   applyEnemyPressure,
   createEnemyStats,
   resolveDamage,
 } from '../domain/combatRules'
 import { createInputIntent, type InputIntent } from '../domain/inputIntent'
+import {
+  createInitialArtifactSelection,
+  selectInitialArtifact,
+  type BaseArtifact,
+  type BaseArtifactId,
+} from '../domain/initialArtifactSelection'
+import type { OnboardingStep } from '../domain/onboardingProgress'
 import {
   advanceRunProgress,
   createRunProgress,
@@ -51,6 +57,7 @@ interface Projectile {
   velocityX: number
   velocityY: number
   remainingMs: number
+  color: number
 }
 
 interface Spirit {
@@ -68,6 +75,11 @@ class QingShiRidgeScene extends Phaser.Scene {
   private enemies: Enemy[] = []
   private projectiles: Projectile[] = []
   private spirits: Spirit[] = []
+  private selectedArtifact?: BaseArtifact
+  private readonly initialArtifactSelection = createInitialArtifactSelection()
+  private readonly completedOnboardingSteps = new Set<OnboardingStep>()
+  private awaitingInitialArtifact = true
+  private onboardingSkipped = false
   private paused = false
   private attackElapsedMs = AUTO_ATTACK_INTERVAL_MS
   private spawnElapsedMs = 0
@@ -97,16 +109,16 @@ class QingShiRidgeScene extends Phaser.Scene {
       .setDepth(10)
       .setScrollFactor(0)
 
-    for (let index = 0; index < 8; index += 1) {
-      this.spawnEnemy()
-    }
-
     this.updateHudText()
     this.renderBattlefield()
+    this.emitSessionEvent({
+      type: 'initial-artifact-selection-requested',
+      candidates: this.initialArtifactSelection.candidates,
+    })
   }
 
   update(_time: number, deltaMs: number) {
-    if (this.paused || this.ended) {
+    if (this.paused || this.ended || this.awaitingInitialArtifact) {
       return
     }
 
@@ -120,12 +132,15 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.spellCooldownMs = Math.max(0, this.spellCooldownMs - stepMs)
     this.hudElapsedMs += stepMs
 
-    if (this.attackElapsedMs >= AUTO_ATTACK_INTERVAL_MS) {
+    if (this.selectedArtifact && this.attackElapsedMs >= this.selectedArtifact.attackIntervalMs) {
       this.attackElapsedMs = 0
       this.fireFlyingSword()
     }
 
-    if (this.spawnElapsedMs >= SPAWN_INTERVAL_MS && this.enemies.length < 36) {
+    const isTeaching = !this.onboardingSkipped && this.progress.elapsedMs < 60_000
+    const spawnIntervalMs = isTeaching ? SPAWN_INTERVAL_MS * 1.8 : SPAWN_INTERVAL_MS
+    const enemyLimit = isTeaching ? 14 : 36
+    if (this.spawnElapsedMs >= spawnIntervalMs && this.enemies.length < enemyLimit) {
       this.spawnElapsedMs = 0
       this.spawnEnemy()
     }
@@ -153,14 +168,34 @@ class QingShiRidgeScene extends Phaser.Scene {
     }
   }
 
+  selectInitialArtifact(artifactId: BaseArtifactId) {
+    if (!this.awaitingInitialArtifact) {
+      return
+    }
+
+    this.selectedArtifact = selectInitialArtifact(this.initialArtifactSelection, artifactId).selected
+    this.awaitingInitialArtifact = false
+    for (let index = 0; index < 3; index += 1) {
+      this.spawnEnemy()
+    }
+    this.updateHudText()
+  }
+
+  skipOnboarding() {
+    this.onboardingSkipped = true
+  }
+
   setPaused(paused: boolean) {
     this.paused = paused
   }
 
   private movePlayer(stepMs: number) {
-    const distance = PLAYER_SPEED * (stepMs / 1_000)
+    const distance = PLAYER_SPEED * (this.selectedArtifact?.moveSpeedMultiplier ?? 1) * (stepMs / 1_000)
     this.player.x = Phaser.Math.Clamp(this.player.x + this.inputIntent.moveX * distance, 28, WORLD_SIZE - 28)
     this.player.y = Phaser.Math.Clamp(this.player.y + this.inputIntent.moveY * distance, 28, WORLD_SIZE - 28)
+    if (this.inputIntent.moveX !== 0 || this.inputIntent.moveY !== 0) {
+      this.completeOnboardingStep('move')
+    }
   }
 
   private spawnEnemy() {
@@ -199,6 +234,11 @@ class QingShiRidgeScene extends Phaser.Scene {
   }
 
   private fireFlyingSword() {
+    const artifact = this.selectedArtifact
+    if (!artifact) {
+      return
+    }
+
     const target = this.enemies.reduce<Enemy | undefined>((nearest, enemy) => {
       if (!nearest) {
         return enemy
@@ -220,7 +260,9 @@ class QingShiRidgeScene extends Phaser.Scene {
       velocityX: ((target.x - this.player.x) / Math.max(distance, 1)) * 620,
       velocityY: ((target.y - this.player.y) / Math.max(distance, 1)) * 620,
       remainingMs: 720,
+      color: artifact.attackColor,
     })
+    this.completeOnboardingStep('auto-attack')
   }
 
   private updateProjectiles(stepMs: number) {
@@ -239,7 +281,7 @@ class QingShiRidgeScene extends Phaser.Scene {
           continue
         }
 
-        enemy.health = resolveDamage(enemy.health, BASE_FLYING_SWORD_DAMAGE)
+        enemy.health = resolveDamage(enemy.health, this.selectedArtifact?.attackDamage ?? 0)
         if (enemy.health <= 0) {
           this.defeatEnemy(hitIndex)
         }
@@ -265,6 +307,10 @@ class QingShiRidgeScene extends Phaser.Scene {
       if (distance < 24) {
         const result = grantExperience(this.progress, spirit.value)
         this.progress = result.progress
+        this.completeOnboardingStep('collect-spirit')
+        if (result.levelsGained > 0) {
+          this.completeOnboardingStep('level-up')
+        }
         continue
       }
 
@@ -283,6 +329,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     }
 
     this.spellCooldownMs = SPELL_COOLDOWN_MS
+    this.completeOnboardingStep('cast-spell')
     for (let index = this.enemies.length - 1; index >= 0; index -= 1) {
       const enemy = this.enemies[index]
       if (!enemy || Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y) > 170) {
@@ -306,9 +353,18 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.spirits.push({ x: enemy.x, y: enemy.y, value: 2 })
   }
 
+  private completeOnboardingStep(step: OnboardingStep) {
+    if (this.completedOnboardingSteps.has(step)) {
+      return
+    }
+
+    this.completedOnboardingSteps.add(step)
+    this.emitSessionEvent({ type: 'onboarding-step-completed', step })
+  }
+
   private updateHudText() {
     this.hudText.setText([
-      `陈砺安  ·  灵蕴进度 ${this.progress.level}`,
+      `${this.selectedArtifact?.name ?? '择一法器'}  ·  灵蕴进度 ${this.progress.level}`,
       `生命 ${Math.ceil(this.player.health)}/${this.player.maxHealth}  ·  妖物 ${this.enemies.length}`,
       `灵蕴 ${this.progress.experience}/${this.progress.experienceToNextLevel}  ·  玄光 ${Math.ceil(this.spellCooldownMs / 1_000)}  ·  ${formatElapsedTime(this.progress.elapsedMs)}`,
     ])
@@ -335,7 +391,7 @@ class QingShiRidgeScene extends Phaser.Scene {
       this.graphics.fillStyle(0x6ee7b7, 0.95).fillCircle(spirit.x, spirit.y, 5)
     }
     for (const projectile of this.projectiles) {
-      this.graphics.lineStyle(3, 0xe9d5ff, 0.9).lineBetween(projectile.x, projectile.y, projectile.x - projectile.velocityX * 0.035, projectile.y - projectile.velocityY * 0.035)
+      this.graphics.lineStyle(3, projectile.color, 0.9).lineBetween(projectile.x, projectile.y, projectile.x - projectile.velocityX * 0.035, projectile.y - projectile.velocityY * 0.035)
     }
     for (const enemy of this.enemies) {
       this.graphics.fillStyle(enemy.color, 1).fillCircle(enemy.x, enemy.y, enemy.radius)
@@ -368,6 +424,8 @@ export function createBattleSession(options: CreateGameSessionOptions) {
   })
 
   const runtime: BattleRuntime = {
+    selectInitialArtifact: (artifactId) => scene.selectInitialArtifact(artifactId),
+    skipOnboarding: () => scene.skipOnboarding(),
     setInputIntent: (intent) => scene.setInputIntent(intent),
     setPaused: (paused) => scene.setPaused(paused),
     destroy: () => game.destroy(true),

@@ -7,6 +7,7 @@ type Screen = 'home' | 'run' | 'result'
 
 const screen = shallowRef<Screen>('home')
 const lastResult = shallowRef<'victory' | 'defeat'>('defeat')
+const showOnboarding = shallowRef(true)
 
 function startRun() {
   if (document.fullscreenEnabled && !document.fullscreenElement) {
@@ -53,7 +54,12 @@ function finishRun(result: 'victory' | 'defeat') {
       </div>
     </section>
 
-    <BattlefieldGame v-else-if="screen === 'run'" @finished="finishRun" />
+    <BattlefieldGame
+      v-else-if="screen === 'run'"
+      :show-onboarding="showOnboarding"
+      @finished="finishRun"
+      @onboarding-completed="showOnboarding = false"
+    />
 
     <section v-else class="grid min-h-svh place-items-center px-6">
       <div class="w-full max-w-lg rounded-lg border border-amber-100/20 bg-stone-950/80 p-8 text-center shadow-2xl">
