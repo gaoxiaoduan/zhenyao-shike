@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, shallowRef, useTemplateRef } from 'vue'
+import type { UpgradeChoice } from '../game/domain/artifactInventory'
 import { createInputIntent, mergeMovementIntent, type InputIntent } from '../game/domain/inputIntent'
 import type { BaseArtifact } from '../game/domain/initialArtifactSelection'
 import {
@@ -13,6 +14,7 @@ import type { GameSession, GameSessionEvent, OnboardingStep } from '../game/sess
 import BattleTouchControls from './BattleTouchControls.vue'
 import InitialArtifactSelectionModal from './InitialArtifactSelectionModal.vue'
 import OnboardingGuide from './OnboardingGuide.vue'
+import UpgradeSelectionModal from './UpgradeSelectionModal.vue'
 
 const props = withDefaults(defineProps<{
   showOnboarding?: boolean
@@ -31,14 +33,22 @@ const showPause = shallowRef(false)
 const orientationPaused = shallowRef(false)
 const pressedKeys = new Set<string>()
 const initialArtifactCandidates = shallowRef<readonly BaseArtifact[]>([])
+const upgradeChoices = shallowRef<readonly UpgradeChoice[]>([])
 const onboardingProgress = shallowRef<OnboardingProgress>(createOnboardingProgress())
 
 const initialSelectionOpen = computed(() => initialArtifactCandidates.value.length > 0)
+const upgradeModalOpen = computed(() => upgradeChoices.value.length > 0)
 const onboardingStep = computed(() => props.showOnboarding ? nextOnboardingStep(onboardingProgress.value) : null)
 
 function handleSessionEvent(event: GameSessionEvent) {
   if (event.type === 'initial-artifact-selection-requested') {
     initialArtifactCandidates.value = event.candidates
+    return
+  }
+
+  if (event.type === 'upgrade-requested') {
+    upgradeChoices.value = event.choices
+    session.value?.pause('upgrade')
     return
   }
 
@@ -59,6 +69,12 @@ function handleSessionEvent(event: GameSessionEvent) {
 function selectInitialArtifact(artifactId: BaseArtifact['id']) {
   session.value?.selectInitialArtifact(artifactId)
   initialArtifactCandidates.value = []
+}
+
+function selectUpgrade(choiceId: string) {
+  session.value?.selectUpgrade(choiceId)
+  upgradeChoices.value = []
+  session.value?.resume('upgrade')
 }
 
 function advanceOnboarding(completedStep: OnboardingStep) {
@@ -220,6 +236,12 @@ onUnmounted(() => {
       v-if="initialSelectionOpen"
       :candidates="initialArtifactCandidates"
       @select="selectInitialArtifact"
+    />
+
+    <UpgradeSelectionModal
+      v-if="upgradeModalOpen"
+      :choices="upgradeChoices"
+      @select="selectUpgrade"
     />
 
     <div

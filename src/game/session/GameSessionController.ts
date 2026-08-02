@@ -4,6 +4,7 @@ import type { GameSession, PauseReason } from './GameSession'
 
 export interface BattleRuntime {
   selectInitialArtifact(artifactId: BaseArtifactId): void
+  selectUpgrade(choiceId: string): void
   skipOnboarding(): void
   setInputIntent(intent: InputIntent): void
   setPaused(paused: boolean): void
@@ -48,6 +49,13 @@ export function createGameSessionController(runtime: BattleRuntime): GameSession
       }
 
       runtime.selectInitialArtifact(artifactId)
+    },
+    selectUpgrade(choiceId) {
+      if (disposed) {
+        return
+      }
+
+      runtime.selectUpgrade(choiceId)
     },
     skipOnboarding() {
       if (disposed) {

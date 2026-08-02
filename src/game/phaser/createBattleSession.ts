@@ -1,5 +1,16 @@
 import * as Phaser from 'phaser'
 import {
+  applyUpgradeChoice,
+  ARTIFACT_DEFINITIONS,
+  createArtifactInventory,
+  generateUpgradeChoices,
+  getArtifactLevel,
+  getArtifactStats,
+  type ArtifactInventory,
+  type ArtifactStats,
+  type UpgradeChoice,
+} from '../domain/artifactInventory'
+import {
   QING_SHI_RIDGE_ENEMY_IDS,
   applyEnemyPressure,
   createEnemyStats,
@@ -30,10 +41,10 @@ const PLAYER_SPEED = 36
 const CAMERA_WORLD_WIDTH = WORLD_SIZE * 0.2
 const CAMERA_ZOOM = BATTLE_WIDTH / CAMERA_WORLD_WIDTH
 const HUD_INTERVAL_MS = 120
-const AUTO_ATTACK_INTERVAL_MS = 420
 const SPAWN_INTERVAL_MS = 700
 const SPELL_COOLDOWN_MS = 6_000
 const SPELL_DAMAGE = 18
+
 const FIXED_BAMBOO_GROVES = [
   { x: 420, y: 440, radius: 104 },
   { x: 1610, y: 510, radius: 126 },
@@ -58,12 +69,21 @@ interface Projectile {
   velocityY: number
   remainingMs: number
   color: number
+  damage: number
+  aoeRadius?: number
 }
 
 interface Spirit {
   x: number
   y: number
   value: number
+}
+
+interface ThunderEffect {
+  x: number
+  y: number
+  radius: number
+  remainingMs: number
 }
 
 class QingShiRidgeScene extends Phaser.Scene {
@@ -75,13 +95,24 @@ class QingShiRidgeScene extends Phaser.Scene {
   private enemies: Enemy[] = []
   private projectiles: Projectile[] = []
   private spirits: Spirit[] = []
+  private thunderEffects: ThunderEffect[] = []
   private selectedArtifact?: BaseArtifact
+  private inventory: ArtifactInventory = createArtifactInventory()
+  private pendingLevelUps = 0
+  private awaitingUpgradeSelection = false
+  private upgradeChoices: readonly UpgradeChoice[] = []
   private readonly initialArtifactSelection = createInitialArtifactSelection()
   private readonly completedOnboardingSteps = new Set<OnboardingStep>()
   private awaitingInitialArtifact = true
   private onboardingSkipped = false
   private paused = false
-  private attackElapsedMs = AUTO_ATTACK_INTERVAL_MS
+
+  private swordElapsedMs = 0
+  private thunderElapsedMs = 0
+  private fourArrayElapsedMs = 0
+  private windBladeElapsedMs = 0
+  private arrayRotationRad = 0
+
   private spawnElapsedMs = 0
   private spellCooldownMs = 0
   private hudElapsedMs = HUD_INTERVAL_MS
@@ -127,15 +158,11 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.movePlayer(stepMs)
     this.updateEnemies(stepMs)
     this.collectSpirits(stepMs)
-    this.attackElapsedMs += stepMs
+    this.updateArtifactAttacks(stepMs)
+
     this.spawnElapsedMs += stepMs
     this.spellCooldownMs = Math.max(0, this.spellCooldownMs - stepMs)
     this.hudElapsedMs += stepMs
-
-    if (this.selectedArtifact && this.attackElapsedMs >= this.selectedArtifact.attackIntervalMs) {
-      this.attackElapsedMs = 0
-      this.fireFlyingSword()
-    }
 
     const isTeaching = !this.onboardingSkipped && this.progress.elapsedMs < 60_000
     const spawnIntervalMs = isTeaching ? SPAWN_INTERVAL_MS * 1.8 : SPAWN_INTERVAL_MS
@@ -174,11 +201,36 @@ class QingShiRidgeScene extends Phaser.Scene {
     }
 
     this.selectedArtifact = selectInitialArtifact(this.initialArtifactSelection, artifactId).selected
+    this.inventory = createArtifactInventory(artifactId)
     this.awaitingInitialArtifact = false
     for (let index = 0; index < 3; index += 1) {
       this.spawnEnemy()
     }
     this.updateHudText()
+  }
+
+  selectUpgrade(choiceId: string) {
+    if (!this.awaitingUpgradeSelection) {
+      return
+    }
+
+    const choice = this.upgradeChoices.find((c) => c.choiceId === choiceId)
+    if (!choice) {
+      return
+    }
+
+    this.inventory = applyUpgradeChoice(this.inventory, choice.artifactId)
+    this.pendingLevelUps = Math.max(0, this.pendingLevelUps - 1)
+    this.awaitingUpgradeSelection = false
+    this.upgradeChoices = []
+
+    this.updateHudText()
+
+    if (this.pendingLevelUps > 0) {
+      this.triggerNextUpgradeIfAvailable()
+    } else {
+      this.setPaused(false)
+    }
   }
 
   skipOnboarding() {
@@ -190,7 +242,15 @@ class QingShiRidgeScene extends Phaser.Scene {
   }
 
   private movePlayer(stepMs: number) {
-    const distance = PLAYER_SPEED * (this.selectedArtifact?.moveSpeedMultiplier ?? 1) * (stepMs / 1_000)
+    let speedMultiplier = 1.0
+    for (const slot of this.inventory.slots) {
+      const stats = getArtifactStats(slot.id, slot.level)
+      if (stats.moveSpeedMultiplier > speedMultiplier) {
+        speedMultiplier = stats.moveSpeedMultiplier
+      }
+    }
+
+    const distance = PLAYER_SPEED * speedMultiplier * (stepMs / 1_000)
     this.player.x = Phaser.Math.Clamp(this.player.x + this.inputIntent.moveX * distance, 28, WORLD_SIZE - 28)
     this.player.y = Phaser.Math.Clamp(this.player.y + this.inputIntent.moveY * distance, 28, WORLD_SIZE - 28)
     if (this.inputIntent.moveX !== 0 || this.inputIntent.moveY !== 0) {
@@ -233,22 +293,51 @@ class QingShiRidgeScene extends Phaser.Scene {
     }
   }
 
-  private fireFlyingSword() {
-    const artifact = this.selectedArtifact
-    if (!artifact) {
-      return
-    }
+  private updateArtifactAttacks(stepMs: number) {
+    this.arrayRotationRad += (stepMs / 1000) * 1.5
 
-    const target = this.enemies.reduce<Enemy | undefined>((nearest, enemy) => {
-      if (!nearest) {
-        return enemy
+    const aliveThunder: ThunderEffect[] = []
+    for (const effect of this.thunderEffects) {
+      effect.remainingMs -= stepMs
+      if (effect.remainingMs > 0) {
+        aliveThunder.push(effect)
       }
+    }
+    this.thunderEffects = aliveThunder
 
-      const nearestDistance = Phaser.Math.Distance.Between(nearest.x, nearest.y, this.player.x, this.player.y)
-      const currentDistance = Phaser.Math.Distance.Between(enemy.x, enemy.y, this.player.x, this.player.y)
-      return currentDistance < nearestDistance ? enemy : nearest
-    }, undefined)
+    for (const slot of this.inventory.slots) {
+      const stats = getArtifactStats(slot.id, slot.level)
 
+      if (slot.id === 'qing-feng-jian-xia') {
+        this.swordElapsedMs += stepMs
+        if (this.swordElapsedMs >= stats.intervalMs) {
+          this.swordElapsedMs = 0
+          this.fireFlyingSword(stats)
+        }
+      } else if (slot.id === 'lei-zhuan-fu-ce') {
+        this.thunderElapsedMs += stepMs
+        if (this.thunderElapsedMs >= stats.intervalMs) {
+          this.thunderElapsedMs = 0
+          this.fireThunderTalisman(stats)
+        }
+      } else if (slot.id === 'si-xiang-zhen-qi') {
+        this.fourArrayElapsedMs += stepMs
+        if (this.fourArrayElapsedMs >= stats.intervalMs) {
+          this.fourArrayElapsedMs = 0
+          this.pulseFourArray(stats)
+        }
+      } else if (slot.id === 'fu-yao-yu-yi') {
+        this.windBladeElapsedMs += stepMs
+        if (this.windBladeElapsedMs >= stats.intervalMs) {
+          this.windBladeElapsedMs = 0
+          this.fireWindBlades(stats)
+        }
+      }
+    }
+  }
+
+  private fireFlyingSword(stats: ArtifactStats) {
+    const target = this.findNearestEnemy()
     if (!target) {
       return
     }
@@ -260,9 +349,79 @@ class QingShiRidgeScene extends Phaser.Scene {
       velocityX: ((target.x - this.player.x) / Math.max(distance, 1)) * 620,
       velocityY: ((target.y - this.player.y) / Math.max(distance, 1)) * 620,
       remainingMs: 720,
-      color: artifact.attackColor,
+      color: ARTIFACT_DEFINITIONS['qing-feng-jian-xia'].attackColor,
+      damage: stats.damage,
     })
     this.completeOnboardingStep('auto-attack')
+  }
+
+  private fireThunderTalisman(stats: ArtifactStats) {
+    const target = this.findNearestEnemy()
+    if (!target) {
+      return
+    }
+
+    const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, target.x, target.y)
+    this.projectiles.push({
+      x: this.player.x,
+      y: this.player.y,
+      velocityX: ((target.x - this.player.x) / Math.max(distance, 1)) * 480,
+      velocityY: ((target.y - this.player.y) / Math.max(distance, 1)) * 480,
+      remainingMs: 600,
+      color: ARTIFACT_DEFINITIONS['lei-zhuan-fu-ce'].attackColor,
+      damage: stats.damage,
+      aoeRadius: stats.aoeRadius,
+    })
+  }
+
+  private pulseFourArray(stats: ArtifactStats) {
+    for (let index = this.enemies.length - 1; index >= 0; index -= 1) {
+      const enemy = this.enemies[index]
+      if (!enemy) {
+        continue
+      }
+
+      const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y)
+      if (distance <= stats.aoeRadius + enemy.radius) {
+        enemy.health = resolveDamage(enemy.health, stats.damage)
+        if (enemy.health <= 0) {
+          this.defeatEnemy(index)
+        }
+      }
+    }
+  }
+
+  private fireWindBlades(stats: ArtifactStats) {
+    const directions = [
+      { x: 1, y: 0 },
+      { x: -1, y: 0 },
+      { x: 0, y: 1 },
+      { x: 0, y: -1 },
+    ]
+
+    for (const dir of directions) {
+      this.projectiles.push({
+        x: this.player.x,
+        y: this.player.y,
+        velocityX: dir.x * 520,
+        velocityY: dir.y * 520,
+        remainingMs: 450,
+        color: ARTIFACT_DEFINITIONS['fu-yao-yu-yi'].attackColor,
+        damage: stats.damage,
+      })
+    }
+  }
+
+  private findNearestEnemy(): Enemy | undefined {
+    return this.enemies.reduce<Enemy | undefined>((nearest, enemy) => {
+      if (!nearest) {
+        return enemy
+      }
+
+      const nearestDistance = Phaser.Math.Distance.Between(nearest.x, nearest.y, this.player.x, this.player.y)
+      const currentDistance = Phaser.Math.Distance.Between(enemy.x, enemy.y, this.player.x, this.player.y)
+      return currentDistance < nearestDistance ? enemy : nearest
+    }, undefined)
   }
 
   private updateProjectiles(stepMs: number) {
@@ -272,20 +431,30 @@ class QingShiRidgeScene extends Phaser.Scene {
       projectile.y += projectile.velocityY * (stepMs / 1_000)
       projectile.remainingMs -= stepMs
 
-      const hitIndex = this.enemies.findIndex(
-        (enemy) => Phaser.Math.Distance.Between(projectile.x, projectile.y, enemy.x, enemy.y) < enemy.radius + 8,
-      )
-      if (hitIndex >= 0) {
-        const enemy = this.enemies[hitIndex]
-        if (!enemy) {
+      if (projectile.aoeRadius && projectile.aoeRadius > 0) {
+        const hitIndex = this.enemies.findIndex(
+          (enemy) => Phaser.Math.Distance.Between(projectile.x, projectile.y, enemy.x, enemy.y) < enemy.radius + 12,
+        )
+        if (hitIndex >= 0 || projectile.remainingMs <= 0) {
+          this.explodeThunder(projectile.x, projectile.y, projectile.damage, projectile.aoeRadius)
           continue
         }
+      } else {
+        const hitIndex = this.enemies.findIndex(
+          (enemy) => Phaser.Math.Distance.Between(projectile.x, projectile.y, enemy.x, enemy.y) < enemy.radius + 8,
+        )
+        if (hitIndex >= 0) {
+          const enemy = this.enemies[hitIndex]
+          if (!enemy) {
+            continue
+          }
 
-        enemy.health = resolveDamage(enemy.health, this.selectedArtifact?.attackDamage ?? 0)
-        if (enemy.health <= 0) {
-          this.defeatEnemy(hitIndex)
+          enemy.health = resolveDamage(enemy.health, projectile.damage)
+          if (enemy.health <= 0) {
+            this.defeatEnemy(hitIndex)
+          }
+          continue
         }
-        continue
       }
 
       if (projectile.remainingMs > 0) {
@@ -293,6 +462,24 @@ class QingShiRidgeScene extends Phaser.Scene {
       }
     }
     this.projectiles = alive
+  }
+
+  private explodeThunder(x: number, y: number, damage: number, radius: number) {
+    this.thunderEffects.push({ x, y, radius, remainingMs: 250 })
+
+    for (let index = this.enemies.length - 1; index >= 0; index -= 1) {
+      const enemy = this.enemies[index]
+      if (!enemy) {
+        continue
+      }
+
+      if (Phaser.Math.Distance.Between(x, y, enemy.x, enemy.y) <= radius + enemy.radius) {
+        enemy.health = resolveDamage(enemy.health, damage)
+        if (enemy.health <= 0) {
+          this.defeatEnemy(index)
+        }
+      }
+    }
   }
 
   private collectSpirits(stepMs: number) {
@@ -310,6 +497,7 @@ class QingShiRidgeScene extends Phaser.Scene {
         this.completeOnboardingStep('collect-spirit')
         if (result.levelsGained > 0) {
           this.completeOnboardingStep('level-up')
+          this.handleLevelUpGained(result.levelsGained)
         }
         continue
       }
@@ -317,6 +505,28 @@ class QingShiRidgeScene extends Phaser.Scene {
       remaining.push(spirit)
     }
     this.spirits = remaining
+  }
+
+  private handleLevelUpGained(levels: number) {
+    this.pendingLevelUps += levels
+    this.triggerNextUpgradeIfAvailable()
+  }
+
+  private triggerNextUpgradeIfAvailable() {
+    if (this.awaitingUpgradeSelection || this.pendingLevelUps <= 0) {
+      return
+    }
+
+    const choices = generateUpgradeChoices(this.inventory, 3)
+    if (choices.length === 0) {
+      this.pendingLevelUps = 0
+      return
+    }
+
+    this.awaitingUpgradeSelection = true
+    this.upgradeChoices = choices
+    this.setPaused(true)
+    this.emitSessionEvent({ type: 'upgrade-requested', choices })
   }
 
   private updateCamera() {
@@ -363,8 +573,13 @@ class QingShiRidgeScene extends Phaser.Scene {
   }
 
   private updateHudText() {
+    const artifactList =
+      this.inventory.slots.length > 0
+        ? this.inventory.slots.map((s) => `${ARTIFACT_DEFINITIONS[s.id].name} Lv.${s.level}`).join(' | ')
+        : this.selectedArtifact?.name ?? '择一法器'
+
     this.hudText.setText([
-      `${this.selectedArtifact?.name ?? '择一法器'}  ·  灵蕴进度 ${this.progress.level}`,
+      `${artifactList}  ·  灵蕴进度 ${this.progress.level}`,
       `生命 ${Math.ceil(this.player.health)}/${this.player.maxHealth}  ·  妖物 ${this.enemies.length}`,
       `灵蕴 ${this.progress.experience}/${this.progress.experienceToNextLevel}  ·  玄光 ${Math.ceil(this.spellCooldownMs / 1_000)}  ·  ${formatElapsedTime(this.progress.elapsedMs)}`,
     ])
@@ -387,20 +602,52 @@ class QingShiRidgeScene extends Phaser.Scene {
       this.graphics.lineBetween(0, coordinate, WORLD_SIZE, coordinate)
     }
 
+    // Render Four-Array aura if player has si-xiang-zhen-qi
+    const arrayLevel = getArtifactLevel(this.inventory, 'si-xiang-zhen-qi')
+    if (arrayLevel > 0) {
+      const stats = getArtifactStats('si-xiang-zhen-qi', arrayLevel)
+      this.graphics.lineStyle(2, ARTIFACT_DEFINITIONS['si-xiang-zhen-qi'].attackColor, 0.45)
+      this.graphics.strokeCircle(this.player.x, this.player.y, stats.aoeRadius)
+
+      // Draw 4 rotating node flags
+      for (let i = 0; i < 4; i++) {
+        const rad = this.arrayRotationRad + (i * Math.PI) / 2
+        const nx = this.player.x + Math.cos(rad) * stats.aoeRadius
+        const ny = this.player.y + Math.sin(rad) * stats.aoeRadius
+        this.graphics.fillStyle(ARTIFACT_DEFINITIONS['si-xiang-zhen-qi'].attackColor, 0.8)
+        this.graphics.fillCircle(nx, ny, 4)
+      }
+    }
+
+    // Render spirits
     for (const spirit of this.spirits) {
       this.graphics.fillStyle(0x6ee7b7, 0.95).fillCircle(spirit.x, spirit.y, 5)
     }
+
+    // Render thunder explosion effects
+    for (const effect of this.thunderEffects) {
+      const alpha = Math.max(0, effect.remainingMs / 250)
+      this.graphics.fillStyle(0xfde68a, alpha * 0.35).fillCircle(effect.x, effect.y, effect.radius)
+      this.graphics.lineStyle(3, 0xfde68a, alpha).strokeCircle(effect.x, effect.y, effect.radius)
+    }
+
+    // Render projectiles
     for (const projectile of this.projectiles) {
       this.graphics.lineStyle(3, projectile.color, 0.9).lineBetween(projectile.x, projectile.y, projectile.x - projectile.velocityX * 0.035, projectile.y - projectile.velocityY * 0.035)
     }
+
+    // Render enemies
     for (const enemy of this.enemies) {
       this.graphics.fillStyle(enemy.color, 1).fillCircle(enemy.x, enemy.y, enemy.radius)
       this.graphics.lineStyle(2, 0x2a180f, 0.7).strokeCircle(enemy.x, enemy.y, enemy.radius)
     }
 
+    // Render protective spell aura if cast recently
     if (this.spellCooldownMs > SPELL_COOLDOWN_MS - 300) {
       this.graphics.lineStyle(4, 0xd8f3ff, 0.7).strokeCircle(this.player.x, this.player.y, 88)
     }
+
+    // Render player
     this.graphics.fillStyle(0xe9d5a1, 1).fillCircle(this.player.x, this.player.y, 18)
     this.graphics.lineStyle(3, 0xffffff, 0.85).strokeCircle(this.player.x, this.player.y, 18)
     this.graphics.fillStyle(0x13241d, 0.9).fillRect(this.player.x - 32, this.player.y - 35, 64, 6)
@@ -425,6 +672,7 @@ export function createBattleSession(options: CreateGameSessionOptions) {
 
   const runtime: BattleRuntime = {
     selectInitialArtifact: (artifactId) => scene.selectInitialArtifact(artifactId),
+    selectUpgrade: (choiceId) => scene.selectUpgrade(choiceId),
     skipOnboarding: () => scene.skipOnboarding(),
     setInputIntent: (intent) => scene.setInputIntent(intent),
     setPaused: (paused) => scene.setPaused(paused),

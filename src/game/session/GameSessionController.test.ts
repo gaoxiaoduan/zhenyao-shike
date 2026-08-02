@@ -6,6 +6,7 @@ function createRuntime(): BattleRuntime {
   return {
     destroy: vi.fn(),
     selectInitialArtifact: vi.fn(),
+    selectUpgrade: vi.fn(),
     skipOnboarding: vi.fn(),
     setInputIntent: vi.fn(),
     setPaused: vi.fn(),
