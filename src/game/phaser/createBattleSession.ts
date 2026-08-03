@@ -15,11 +15,21 @@ import {
   type UpgradeChoice,
 } from '../domain/artifactInventory'
 import {
-  QING_SHI_RIDGE_ENEMY_IDS,
+  QING_SHI_RIDGE_COMMON_ENEMY_IDS,
   applyEnemyPressure,
   createEnemyStats,
+  getOffscreenSpawnPosition,
   resolveDamage,
+  type QingShiRidgeEnemyId,
 } from '../domain/combatRules'
+import {
+  createDemonLairState,
+  damageDemonLair,
+  generateQingShiRidgeLayout,
+  updateDemonLairTrigger,
+  type DemonLairState,
+  type QingShiRidgeTerrainLayout,
+} from '../domain/qingshiEventsAndTerrain'
 import { createInputIntent, type InputIntent } from '../domain/inputIntent'
 import {
   createInitialArtifactSelection,
@@ -71,11 +81,6 @@ const SPAWN_INTERVAL_MS = 700
 const SPELL_COOLDOWN_MS = 6_000
 const SPELL_DAMAGE = 18
 
-const FIXED_BAMBOO_GROVES = [
-  { x: 420, y: 440, radius: 104 },
-  { x: 1610, y: 510, radius: 126 },
-  { x: 1420, y: 1590, radius: 112 },
-] as const
 const ABANDONED_VILLAGE = { x: 1160, y: 1040, width: 290, height: 190 } as const
 
 interface Enemy {
@@ -145,6 +150,9 @@ class QingShiRidgeScene extends Phaser.Scene {
   private playerDamageMultiplier = 1.0
   private playerSpeedMultiplier = 1.0
   private playerMaxHealthMultiplier = 1.0
+  private terrainLayout: QingShiRidgeTerrainLayout = generateQingShiRidgeLayout(Phaser.Math.Between(1, 9999))
+  private demonLair: DemonLairState = createDemonLairState(WORLD_SIZE)
+  private totalEnemiesSpawnedCount = 0
   private readonly initialArtifactSelection = createInitialArtifactSelection()
   private readonly completedOnboardingSteps = new Set<OnboardingStep>()
   private awaitingInitialArtifact = true
@@ -203,6 +211,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     const stepMs = Math.min(deltaMs, 50)
     const previousPhase = this.progress.phase
     this.progress = advanceRunProgress(this.progress, stepMs)
+    this.demonLair = updateDemonLairTrigger(this.demonLair, this.progress.elapsedMs)
     if (previousPhase === 'growth' && this.progress.phase === 'boss') {
       this.startBossEncounter()
     }
@@ -545,19 +554,57 @@ class QingShiRidgeScene extends Phaser.Scene {
   }
 
   private spawnEnemy() {
-    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2)
-    const distance = Phaser.Math.Between(420, 620)
-    const enemyId = QING_SHI_RIDGE_ENEMY_IDS[Phaser.Math.Between(0, QING_SHI_RIDGE_ENEMY_IDS.length - 1)]
-    if (!enemyId) {
-      return
+    const cam = this.cameras.main
+    const cameraWorld = {
+      x: cam.worldView.x,
+      y: cam.worldView.y,
+      width: cam.worldView.width || 800,
+      height: cam.worldView.height || 600,
     }
+
+    const spawnPos = getOffscreenSpawnPosition(cameraWorld, WORLD_SIZE, 80)
+    this.totalEnemiesSpawnedCount += 1
+
+    const shouldSpawnElite =
+      this.totalEnemiesSpawnedCount % 10 === 0 &&
+      !this.enemies.some((e) => e.id === 'qing-shi-ridge-elite-wolf')
+
+    const enemyId: QingShiRidgeEnemyId = shouldSpawnElite
+      ? 'qing-shi-ridge-elite-wolf'
+      : QING_SHI_RIDGE_COMMON_ENEMY_IDS[Phaser.Math.Between(0, QING_SHI_RIDGE_COMMON_ENEMY_IDS.length - 1)] ??
+        'qing-shi-ridge-boar-demon'
+
     const stats = createEnemyStats(enemyId)
     this.enemies.push({
       kind: 'enemy',
-      x: Phaser.Math.Clamp(this.player.x + Math.cos(angle) * distance, 36, WORLD_SIZE - 36),
-      y: Phaser.Math.Clamp(this.player.y + Math.sin(angle) * distance, 36, WORLD_SIZE - 36),
+      x: spawnPos.x,
+      y: spawnPos.y,
       ...stats,
     })
+  }
+
+  private checkDemonLairHit(x: number, y: number, range: number, damage: number) {
+    if (!this.demonLair.active || this.demonLair.destroyed) {
+      return
+    }
+
+    const distance = Phaser.Math.Distance.Between(x, y, this.demonLair.x, this.demonLair.y)
+    if (distance <= range + this.demonLair.radius) {
+      const result = damageDemonLair(this.demonLair, damage)
+      this.demonLair = result.nextState
+      if (result.justDestroyed) {
+        for (let i = 0; i < 40; i++) {
+          const angle = Phaser.Math.FloatBetween(0, Math.PI * 2)
+          const dist = Phaser.Math.Between(10, 90)
+          this.spirits.push({
+            x: Phaser.Math.Clamp(this.demonLair.x + Math.cos(angle) * dist, 40, WORLD_SIZE - 40),
+            y: Phaser.Math.Clamp(this.demonLair.y + Math.sin(angle) * dist, 40, WORLD_SIZE - 40),
+            value: 3,
+          })
+        }
+        this.deductionState = createDeductionState(this.deductionState.remainingCount + result.bonusDeduction)
+      }
+    }
   }
 
   private updateEnemies(stepMs: number) {
@@ -681,6 +728,13 @@ class QingShiRidgeScene extends Phaser.Scene {
     if (boss && this.isWithinTarget(boss, this.player.x, this.player.y, stats.aoeRadius)) {
       this.damageBoss(stats.damage)
     }
+
+    this.checkDemonLairHit(
+      this.player.x,
+      this.player.y,
+      stats.aoeRadius,
+      Math.round(stats.damage * this.playerDamageMultiplier),
+    )
   }
 
   private fireWindBlades(stats: ArtifactStats, artifactId: ArtifactId = 'fu-yao-yu-yi') {
@@ -812,6 +866,8 @@ class QingShiRidgeScene extends Phaser.Scene {
     if (boss && this.isWithinTarget(boss, x, y, radius)) {
       this.damageBoss(damage)
     }
+
+    this.checkDemonLairHit(x, y, radius, damage)
   }
 
   private collectSpirits(stepMs: number) {
@@ -969,21 +1025,25 @@ class QingShiRidgeScene extends Phaser.Scene {
       this.inventory.slots.length > 0
         ? this.inventory.slots.map((s) => `${ARTIFACT_DEFINITIONS[s.id].name} Lv.${s.level}`).join(' | ')
         : this.selectedArtifact?.name ?? '择一法器'
-    const bossStatus = this.boss
-      ? `${
-          {
-            arrival: '啸月狼王降临',
-            combat: '啸月狼王决战',
-            enraged: '啸月狼王 · 狂月',
-            defeated: '啸月狼王已伏',
-          }[this.boss.phase]
-        } ${Math.ceil(this.boss.health)}/${this.boss.maxHealth}`
-      : '成长阶段'
+
+    let stageStatus = '成长阶段'
+    if (this.boss) {
+      stageStatus = `${
+        {
+          arrival: '啸月狼王降临',
+          combat: '啸月狼王决战',
+          enraged: '啸月狼王 · 狂月',
+          defeated: '啸月狼王已伏',
+        }[this.boss.phase]
+      } ${Math.ceil(this.boss.health)}/${this.boss.maxHealth}`
+    } else if (this.demonLair.active && !this.demonLair.destroyed) {
+      stageStatus = `🔥 妖巢暴动 ${Math.ceil(this.demonLair.health)}/${this.demonLair.maxHealth}`
+    }
 
     this.hudText.setText([
       `${artifactList}  ·  灵蕴进度 ${this.progress.level}`,
       `生命 ${Math.ceil(this.player.health)}/${this.player.maxHealth}  ·  妖物 ${this.enemies.length}`,
-      `${bossStatus}  ·  灵蕴 ${this.progress.experience}/${this.progress.experienceToNextLevel}`,
+      `${stageStatus}  ·  灵蕴 ${this.progress.experience}/${this.progress.experienceToNextLevel}`,
       `玄光 ${Math.ceil(this.spellCooldownMs / 1_000)}  ·  ${formatElapsedTime(this.progress.elapsedMs)}`,
     ])
   }
@@ -995,10 +1055,28 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.graphics.lineStyle(34, 0x3e4d34, 0.7).lineBetween(130, 1860, 1870, 250)
     this.graphics.fillStyle(0x554536, 0.9).fillRect(ABANDONED_VILLAGE.x, ABANDONED_VILLAGE.y, ABANDONED_VILLAGE.width, ABANDONED_VILLAGE.height)
     this.graphics.lineStyle(4, 0xc29b64, 0.65).strokeRect(ABANDONED_VILLAGE.x, ABANDONED_VILLAGE.y, ABANDONED_VILLAGE.width, ABANDONED_VILLAGE.height)
-    for (const grove of FIXED_BAMBOO_GROVES) {
+
+    // Render randomized terrain groves
+    for (const grove of this.terrainLayout.groves) {
       this.graphics.fillStyle(0x325b42, 0.92).fillCircle(grove.x, grove.y, grove.radius)
       this.graphics.lineStyle(3, 0x5d8a56, 0.7).strokeCircle(grove.x, grove.y, grove.radius)
     }
+
+    // Render spirit nodes
+    for (const node of this.terrainLayout.spiritNodes) {
+      this.graphics.fillStyle(0x38bdf8, 0.75).fillCircle(node.x, node.y, node.radius)
+      this.graphics.lineStyle(2, 0xbae6fd, 0.85).strokeCircle(node.x, node.y, node.radius)
+    }
+
+    // Render active Demon Lair event node
+    if (this.demonLair.active && !this.demonLair.destroyed) {
+      const pulse = 0.5 + Math.sin(Date.now() / 200) * 0.25
+      this.graphics.fillStyle(0x7f1d1d, 0.7 + pulse * 0.25).fillCircle(this.demonLair.x, this.demonLair.y, this.demonLair.radius)
+      this.graphics.lineStyle(4, 0xef4444, 0.9).strokeCircle(this.demonLair.x, this.demonLair.y, this.demonLair.radius + 8)
+      this.graphics.fillStyle(0x1c101c, 0.9).fillRect(this.demonLair.x - 40, this.demonLair.y - 65, 80, 7)
+      this.graphics.fillStyle(0xef4444, 1).fillRect(this.demonLair.x - 40, this.demonLair.y - 65, 80 * (this.demonLair.health / this.demonLair.maxHealth), 7)
+    }
+
     this.graphics.lineStyle(1, 0x2f4a3a, 0.38)
     for (let coordinate = 128; coordinate < WORLD_SIZE; coordinate += 128) {
       this.graphics.lineBetween(coordinate, 0, coordinate, WORLD_SIZE)
@@ -1045,6 +1123,9 @@ class QingShiRidgeScene extends Phaser.Scene {
 
     // Render enemies
     for (const enemy of this.enemies) {
+      if (enemy.id === 'qing-shi-ridge-elite-wolf') {
+        this.graphics.lineStyle(3, 0xf59e0b, 0.9).strokeCircle(enemy.x, enemy.y, enemy.radius + 6)
+      }
       this.graphics.fillStyle(enemy.color, 1).fillCircle(enemy.x, enemy.y, enemy.radius)
       this.graphics.lineStyle(2, 0x2a180f, 0.7).strokeCircle(enemy.x, enemy.y, enemy.radius)
     }
