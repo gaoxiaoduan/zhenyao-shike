@@ -1,4 +1,5 @@
 import type { AscensionRecipe, UpgradeChoice } from '../domain/artifactInventory'
+import type { ZhouTianOption } from '../domain/deductionAndZhouTian'
 import type { InputIntent } from '../domain/inputIntent'
 import type { BaseArtifact, BaseArtifactId } from '../domain/initialArtifactSelection'
 import type { OnboardingStep } from '../domain/onboardingProgress'
@@ -8,7 +9,12 @@ export type { OnboardingStep } from '../domain/onboardingProgress'
 
 export type GameSessionEvent =
   | { readonly type: 'initial-artifact-selection-requested'; readonly candidates: readonly BaseArtifact[] }
-  | { readonly type: 'upgrade-requested'; readonly choices: readonly UpgradeChoice[] }
+  | {
+      readonly type: 'upgrade-requested'
+      readonly choices: readonly (UpgradeChoice | ZhouTianOption)[]
+      readonly deductionCount: number
+      readonly isZhouTian?: boolean
+    }
   | { readonly type: 'ascension-requested'; readonly choices: readonly AscensionRecipe[] }
   | { readonly type: 'onboarding-step-completed'; readonly step: OnboardingStep }
   | { readonly type: 'pause-requested' }
@@ -21,6 +27,8 @@ export interface GameSession {
   selectUpgrade(choiceId: string): void
   selectAscension(choiceId: string): void
   skipAscension(): void
+  deduceUpgrade(): void
+  tunaHeal(): void
   skipOnboarding(): void
   setInputIntent(intent: InputIntent): void
   dispose(): void

@@ -9,6 +9,8 @@ function createRuntime(): BattleRuntime {
     selectUpgrade: vi.fn(),
     selectAscension: vi.fn(),
     skipAscension: vi.fn(),
+    deduceUpgrade: vi.fn(),
+    tunaHeal: vi.fn(),
     skipOnboarding: vi.fn(),
     setInputIntent: vi.fn(),
     setPaused: vi.fn(),
@@ -78,5 +80,16 @@ describe('历练会话', () => {
 
     expect(runtime.selectAscension).toHaveBeenCalledWith('ascend-qing-feng-si-xiang')
     expect(runtime.skipAscension).toHaveBeenCalledOnce()
+  })
+
+  it('将推演重抽与吐纳调息转交给战场运行时', () => {
+    const runtime = createRuntime()
+    const session = createGameSessionController(runtime)
+
+    session.deduceUpgrade()
+    session.tunaHeal()
+
+    expect(runtime.deduceUpgrade).toHaveBeenCalledOnce()
+    expect(runtime.tunaHeal).toHaveBeenCalledOnce()
   })
 })

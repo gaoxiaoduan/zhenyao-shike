@@ -7,6 +7,8 @@ export interface BattleRuntime {
   selectUpgrade(choiceId: string): void
   selectAscension(choiceId: string): void
   skipAscension(): void
+  deduceUpgrade(): void
+  tunaHeal(): void
   skipOnboarding(): void
   setInputIntent(intent: InputIntent): void
   setPaused(paused: boolean): void
@@ -72,6 +74,20 @@ export function createGameSessionController(runtime: BattleRuntime): GameSession
       }
 
       runtime.skipAscension()
+    },
+    deduceUpgrade() {
+      if (disposed) {
+        return
+      }
+
+      runtime.deduceUpgrade()
+    },
+    tunaHeal() {
+      if (disposed) {
+        return
+      }
+
+      runtime.tunaHeal()
     },
     skipOnboarding() {
       if (disposed) {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, shallowRef, useTemplateRef } from 'vue'
 import type { AscensionRecipe, UpgradeChoice } from '../game/domain/artifactInventory'
+import type { ZhouTianOption } from '../game/domain/deductionAndZhouTian'
 import { createInputIntent, mergeMovementIntent, type InputIntent } from '../game/domain/inputIntent'
 import type { BaseArtifact } from '../game/domain/initialArtifactSelection'
 import {
@@ -33,8 +34,10 @@ const showPause = shallowRef(false)
 const orientationPaused = shallowRef(false)
 const pressedKeys = new Set<string>()
 const initialArtifactCandidates = shallowRef<readonly BaseArtifact[]>([])
-const upgradeChoices = shallowRef<readonly UpgradeChoice[]>([])
+const upgradeChoices = shallowRef<readonly (UpgradeChoice | ZhouTianOption)[]>([])
 const ascensionChoices = shallowRef<readonly AscensionRecipe[]>([])
+const deductionCount = shallowRef(1)
+const isZhouTian = shallowRef(false)
 const onboardingProgress = shallowRef<OnboardingProgress>(createOnboardingProgress())
 
 const initialSelectionOpen = computed(() => initialArtifactCandidates.value.length > 0)
@@ -49,6 +52,8 @@ function handleSessionEvent(event: GameSessionEvent) {
 
   if (event.type === 'upgrade-requested') {
     upgradeChoices.value = event.choices
+    deductionCount.value = event.deductionCount
+    isZhouTian.value = !!event.isZhouTian
     session.value?.pause('upgrade')
     return
   }
@@ -101,6 +106,17 @@ function skipAscension() {
   if (upgradeChoices.value.length === 0) {
     session.value?.resume('upgrade')
   }
+}
+
+function deduceUpgrade() {
+  session.value?.deduceUpgrade()
+}
+
+function tunaHeal() {
+  upgradeChoices.value = []
+  ascensionChoices.value = []
+  session.value?.tunaHeal()
+  session.value?.resume('upgrade')
 }
 
 function advanceOnboarding(completedStep: OnboardingStep) {
@@ -268,9 +284,13 @@ onUnmounted(() => {
       v-if="upgradeModalOpen"
       :choices="upgradeChoices"
       :ascensions="ascensionChoices"
+      :deduction-count="deductionCount"
+      :is-zhou-tian="isZhouTian"
       @select="selectUpgrade"
       @select-ascension="selectAscension"
       @skip-ascension="skipAscension"
+      @deduce="deduceUpgrade"
+      @tuna="tunaHeal"
     />
 
     <div

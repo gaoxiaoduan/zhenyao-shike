@@ -47,6 +47,16 @@ import {
   type WolfKingEncounter,
   type WolfKingEvent,
 } from '../domain/wolfKingRules'
+import {
+  applyZhouTianChoice,
+  calculateTunaHeal,
+  canPerformDeduction,
+  createDeductionState,
+  createZhouTianState,
+  generateZhouTianChoices,
+  performDeduction,
+  type ZhouTianOptionId,
+} from '../domain/deductionAndZhouTian'
 import type { CreateGameSessionOptions, GameSessionEvent } from '../session/GameSession'
 import { createGameSessionController, type BattleRuntime } from '../session/GameSessionController'
 
@@ -129,6 +139,12 @@ class QingShiRidgeScene extends Phaser.Scene {
   private upgradeChoices: readonly UpgradeChoice[] = []
   private awaitingAscensionSelection = false
   private ascensionChoices: readonly AscensionRecipe[] = []
+  private deductionState = createDeductionState(1)
+  private zhouTianState = createZhouTianState()
+  private isZhouTianActive = false
+  private playerDamageMultiplier = 1.0
+  private playerSpeedMultiplier = 1.0
+  private playerMaxHealthMultiplier = 1.0
   private readonly initialArtifactSelection = createInitialArtifactSelection()
   private readonly completedOnboardingSteps = new Set<OnboardingStep>()
   private awaitingInitialArtifact = true
@@ -271,6 +287,35 @@ class QingShiRidgeScene extends Phaser.Scene {
       return
     }
 
+    if (this.isZhouTianActive) {
+      try {
+        const result = applyZhouTianChoice(this.zhouTianState, choiceId as ZhouTianOptionId)
+        this.zhouTianState = result.nextState
+        this.playerDamageMultiplier += result.damageMultiplierDelta
+        this.playerSpeedMultiplier += result.moveSpeedMultiplierDelta
+        if (result.maxHealthMultiplierDelta > 0) {
+          this.playerMaxHealthMultiplier += result.maxHealthMultiplierDelta
+          const newMax = Math.round(100 * this.playerMaxHealthMultiplier)
+          const bonus = newMax - this.player.maxHealth
+          this.player.maxHealth = newMax
+          this.player.health = Math.min(this.player.maxHealth, this.player.health + bonus)
+        }
+      } catch {
+        return
+      }
+
+      this.pendingLevelUps = Math.max(0, this.pendingLevelUps - 1)
+      this.awaitingUpgradeSelection = false
+      this.updateHudText()
+
+      if (this.pendingLevelUps > 0) {
+        this.triggerNextUpgradeIfAvailable()
+      } else {
+        this.setPaused(false)
+      }
+      return
+    }
+
     const choice = this.upgradeChoices.find((c) => c.choiceId === choiceId)
     if (!choice) {
       return
@@ -290,6 +335,44 @@ class QingShiRidgeScene extends Phaser.Scene {
     } else {
       this.setPaused(false)
     }
+  }
+
+  deduceUpgrade() {
+    if (!this.awaitingUpgradeSelection || this.isZhouTianActive) {
+      return
+    }
+
+    if (!canPerformDeduction(this.deductionState)) {
+      return
+    }
+
+    const result = performDeduction(this.deductionState, this.upgradeChoices, this.inventory)
+    this.deductionState = result.nextState
+    this.upgradeChoices = result.newChoices
+    this.emitSessionEvent({
+      type: 'upgrade-requested',
+      choices: this.upgradeChoices,
+      deductionCount: this.deductionState.remainingCount,
+      isZhouTian: false,
+    })
+  }
+
+  tunaHeal() {
+    if (!this.awaitingUpgradeSelection && !this.awaitingAscensionSelection) {
+      return
+    }
+
+    const heal = calculateTunaHeal(this.player.maxHealth)
+    this.player.health = Math.min(this.player.maxHealth, this.player.health + heal)
+
+    this.awaitingUpgradeSelection = false
+    this.awaitingAscensionSelection = false
+    this.upgradeChoices = []
+    this.ascensionChoices = []
+    this.pendingLevelUps = Math.max(0, this.pendingLevelUps - 1)
+
+    this.updateHudText()
+    this.setPaused(false)
   }
 
   selectAscension(choiceId: string) {
@@ -774,25 +857,49 @@ class QingShiRidgeScene extends Phaser.Scene {
     const choices = generateUpgradeChoices(this.inventory, 3)
     const ascensionChoices = getAvailableAscensionChoices(this.inventory)
     this.ascensionChoices = ascensionChoices
-    if (choices.length === 0 && ascensionChoices.length === 0) {
-      this.pendingLevelUps = 0
+
+    if (choices.length > 0) {
+      this.isZhouTianActive = false
+      this.awaitingUpgradeSelection = true
+      this.upgradeChoices = choices
       this.awaitingAscensionSelection = false
-      this.setPaused(false)
+      this.setPaused(true)
+      this.emitSessionEvent({
+        type: 'upgrade-requested',
+        choices,
+        deductionCount: this.deductionState.remainingCount,
+        isZhouTian: false,
+      })
       return
     }
 
-    if (choices.length === 0) {
+    if (ascensionChoices.length > 0) {
+      this.isZhouTianActive = false
       this.pendingLevelUps = 0
       this.awaitingUpgradeSelection = false
       this.upgradeChoices = []
       this.beginAscensionSelection(ascensionChoices)
       return
     }
-    this.awaitingUpgradeSelection = choices.length > 0
-    this.upgradeChoices = choices
-    this.awaitingAscensionSelection = false
-    this.setPaused(true)
-    this.emitSessionEvent({ type: 'upgrade-requested', choices })
+
+    const zhouTianChoices = generateZhouTianChoices(this.zhouTianState)
+    if (zhouTianChoices.length > 0) {
+      this.isZhouTianActive = true
+      this.awaitingUpgradeSelection = true
+      this.awaitingAscensionSelection = false
+      this.setPaused(true)
+      this.emitSessionEvent({
+        type: 'upgrade-requested',
+        choices: zhouTianChoices,
+        deductionCount: this.deductionState.remainingCount,
+        isZhouTian: true,
+      })
+      return
+    }
+
+    this.pendingLevelUps = 0
+    this.awaitingUpgradeSelection = false
+    this.setPaused(false)
   }
 
   private beginAscensionSelection(choices: readonly AscensionRecipe[]) {
@@ -1007,6 +1114,8 @@ export function createBattleSession(options: CreateGameSessionOptions) {
     selectUpgrade: (choiceId) => scene.selectUpgrade(choiceId),
     selectAscension: (choiceId) => scene.selectAscension(choiceId),
     skipAscension: () => scene.skipAscension(),
+    deduceUpgrade: () => scene.deduceUpgrade(),
+    tunaHeal: () => scene.tunaHeal(),
     skipOnboarding: () => scene.skipOnboarding(),
     setInputIntent: (intent) => scene.setInputIntent(intent),
     setPaused: (paused) => scene.setPaused(paused),

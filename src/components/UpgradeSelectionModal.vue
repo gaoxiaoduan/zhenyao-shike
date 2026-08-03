@@ -1,16 +1,25 @@
 <script setup lang="ts">
 import type { AscensionRecipe, UpgradeChoice } from '../game/domain/artifactInventory'
+import type { ZhouTianOption } from '../game/domain/deductionAndZhouTian'
 
 defineProps<{
-  choices: readonly UpgradeChoice[]
+  choices: readonly (UpgradeChoice | ZhouTianOption)[]
   ascensions: readonly AscensionRecipe[]
+  deductionCount: number
+  isZhouTian?: boolean
 }>()
 
 const emit = defineEmits<{
   select: [choiceId: string]
   selectAscension: [choiceId: string]
   skipAscension: []
+  deduce: []
+  tuna: []
 }>()
+
+function isUpgradeChoice(item: UpgradeChoice | ZhouTianOption): item is UpgradeChoice {
+  return 'type' in item
+}
 </script>
 
 <template>
@@ -20,12 +29,18 @@ const emit = defineEmits<{
     aria-label="法器突破与构筑升级"
   >
     <div class="w-full max-w-4xl rounded-lg border border-amber-100/35 bg-[#18231e] p-5 shadow-2xl sm:p-8">
-      <p class="text-center text-sm tracking-[0.35em] text-amber-200/80">灵蕴满溢 · 领悟升级</p>
+      <p class="text-center text-sm tracking-[0.35em] text-amber-200/80">
+        {{ isZhouTian ? '法器满阶 · 周天运转' : '灵蕴满溢 · 领悟升级' }}
+      </p>
       <h2 class="mt-2 text-center font-serif text-3xl font-bold text-amber-50 sm:text-4xl">
-        择一参悟
+        {{ isZhouTian ? '周天运转 强化自身' : '择一参悟' }}
       </h2>
       <p class="mx-auto mt-3 max-w-xl text-center text-sm leading-6 text-stone-300">
-        提升当前法器威力，或参悟新的法器加入构筑（最多同时驾驭 4 件法器）。
+        {{
+          isZhouTian
+            ? '法器已达最高境界，借周天运转淬炼自身（御器、行气、炼体各可强化 3 次）。'
+            : '提升当前法器威力，或参悟新的法器加入构筑（最多同时驾驭 4 件法器）。'
+        }}
       </p>
 
       <div v-if="choices.length > 0" class="mt-7 grid gap-4 sm:grid-cols-3">
@@ -42,6 +57,7 @@ const emit = defineEmits<{
                 {{ choice.name }}
               </span>
               <span
+                v-if="isUpgradeChoice(choice)"
                 class="rounded border px-2 py-0.5 text-xs font-medium tracking-wider"
                 :class="
                   choice.type === 'acquire'
@@ -50,6 +66,12 @@ const emit = defineEmits<{
                 "
               >
                 {{ choice.type === 'acquire' ? '新获得' : `Lv.${choice.currentLevel} ➔ Lv.${choice.targetLevel}` }}
+              </span>
+              <span
+                v-else
+                class="rounded border border-cyan-400/40 bg-cyan-950/60 px-2 py-0.5 text-xs font-medium tracking-wider text-cyan-200"
+              >
+                {{ choice.count }}/{{ choice.maxCount }}
               </span>
             </div>
 
@@ -63,6 +85,30 @@ const emit = defineEmits<{
               {{ choice.statsDescription }}
             </span>
           </div>
+        </button>
+      </div>
+
+      <!-- Action controls bar: Deduction (推演) & Meditation (吐纳) -->
+      <div class="mt-6 flex flex-wrap items-center justify-center gap-4 border-t border-amber-100/15 pt-5">
+        <button
+          class="flex items-center gap-2 rounded-md border border-cyan-300/40 bg-cyan-950/40 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-900/60 disabled:cursor-not-allowed disabled:opacity-40"
+          type="button"
+          :disabled="deductionCount <= 0 || isZhouTian"
+          @click="emit('deduce')"
+        >
+          <span>🔮 推演重抽</span>
+          <span class="rounded-full bg-cyan-900/80 px-2 py-0.5 text-xs text-cyan-200">
+            剩余 {{ deductionCount }} 次
+          </span>
+        </button>
+
+        <button
+          class="flex items-center gap-2 rounded-md border border-emerald-300/40 bg-emerald-950/40 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:border-emerald-200 hover:bg-emerald-900/60"
+          type="button"
+          @click="emit('tuna')"
+        >
+          <span>🧘 吐纳调息</span>
+          <span class="text-xs text-emerald-300/90">（放弃本次升级，回复 15% 生命）</span>
         </button>
       </div>
 
@@ -105,8 +151,9 @@ const emit = defineEmits<{
       </section>
 
       <p class="mt-6 text-center text-xs text-stone-400">
-        选择后法器效果立即反映在战场上；升阶可暂缓至下一次升级。
+        选择后效果立即反映在战场上；推演不消耗吐纳，吐纳不消耗推演。
       </p>
     </div>
   </div>
 </template>
+
