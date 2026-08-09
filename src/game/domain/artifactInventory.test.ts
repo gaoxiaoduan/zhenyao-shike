@@ -102,6 +102,20 @@ describe('artifactInventory domain rules', () => {
     expect(choices.some((c) => c.artifactId === 'qing-feng-jian-xia')).toBe(false)
   })
 
+  it('hands off to ascension or Zhou Tian when no artifact progression remains', () => {
+    let inventory = createArtifactInventory('qing-feng-jian-xia')
+    inventory = applyUpgradeChoice(inventory, 'lei-zhuan-fu-ce')
+    inventory = applyUpgradeChoice(inventory, 'si-xiang-zhen-qi')
+    inventory = applyUpgradeChoice(inventory, 'fu-yao-yu-yi')
+    for (const artifactId of ['qing-feng-jian-xia', 'lei-zhuan-fu-ce', 'si-xiang-zhen-qi', 'fu-yao-yu-yi'] as const) {
+      for (let level = 1; level < MAX_ARTIFACT_LEVEL; level += 1) {
+        inventory = applyUpgradeChoice(inventory, artifactId)
+      }
+    }
+
+    expect(draftUpgradeChoices(inventory, createUpgradeDraftState(5)).choices).toHaveLength(0)
+  })
+
   it('correctly calculates artifact stats progression for all levels', () => {
     for (let lvl = 1; lvl <= 5; lvl++) {
       const swordStats = getArtifactStats('qing-feng-jian-xia', lvl)

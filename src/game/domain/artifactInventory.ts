@@ -416,7 +416,8 @@ export function draftUpgradeChoices(
 ): { readonly choices: readonly UpgradeDraftChoice[]; readonly nextState: UpgradeDraftState } {
   const count = Math.max(0, Math.floor(options.count ?? 3))
   const artifactChoices = [...generateUpgradeChoices(inventory, Number.POSITIVE_INFINITY)]
-  const allChoices: UpgradeDraftChoice[] = [...artifactChoices, ...generateFlexibleUpgradeChoices(state)]
+  const flexibleChoices = artifactChoices.length > 0 ? generateFlexibleUpgradeChoices(state) : []
+  const allChoices: UpgradeDraftChoice[] = [...artifactChoices, ...flexibleChoices]
   const excludedIds = new Set(options.excludedChoiceIds ?? [])
   const preferredPool = allChoices.filter((choice) => !excludedIds.has(choice.choiceId))
   const pool = preferredPool.length > 0 ? preferredPool : allChoices
