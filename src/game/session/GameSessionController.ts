@@ -1,5 +1,6 @@
 import type { InputIntent } from '../domain/inputIntent'
 import type { BaseArtifactId } from '../domain/initialArtifactSelection'
+import type { BattleViewport } from '../platform/viewportPolicy'
 import type { GameSession, PauseReason } from './GameSession'
 
 export interface BattleRuntime {
@@ -11,6 +12,8 @@ export interface BattleRuntime {
   tunaHeal(): void
   skipOnboarding(): void
   setInputIntent(intent: InputIntent): void
+  resize(viewport: BattleViewport): void
+  setReducedMotion(reducedMotion: boolean): void
   setPaused(paused: boolean): void
   destroy(): void
 }
@@ -102,6 +105,20 @@ export function createGameSessionController(runtime: BattleRuntime): GameSession
       }
 
       runtime.setInputIntent(intent)
+    },
+    resize(viewport) {
+      if (disposed) {
+        return
+      }
+
+      runtime.resize(viewport)
+    },
+    setReducedMotion(reducedMotion) {
+      if (disposed) {
+        return
+      }
+
+      runtime.setReducedMotion(reducedMotion)
     },
     dispose() {
       if (disposed) {

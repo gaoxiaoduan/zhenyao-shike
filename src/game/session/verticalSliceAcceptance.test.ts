@@ -95,6 +95,8 @@ describe('核心切片与构筑验收 (Issue #8)', () => {
       tunaHeal: () => undefined,
       skipOnboarding: () => undefined,
       setInputIntent: () => undefined,
+      resize: () => undefined,
+      setReducedMotion: () => undefined,
       setPaused: (p) => {
         currentPaused = p
       },

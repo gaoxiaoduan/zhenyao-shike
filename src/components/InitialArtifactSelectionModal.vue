@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { BaseArtifact } from '../game/domain/initialArtifactSelection'
+import ArtifactIcon from './game/ArtifactIcon.vue'
 
 defineProps<{
   candidates: readonly BaseArtifact[]
@@ -14,9 +15,10 @@ const emit = defineEmits<{
   <div
     class="initial-artifact-selection absolute inset-0 z-50 grid place-items-center bg-stone-950/82 p-5 backdrop-blur-sm"
     role="dialog"
+    aria-modal="true"
     aria-label="选择初始法器"
   >
-    <div class="w-full max-w-3xl rounded-lg border border-amber-100/30 bg-[#18231e] p-5 shadow-2xl sm:p-8">
+    <div class="max-h-[calc(100svh-2.5rem)] w-full max-w-3xl overflow-y-auto rounded-lg border border-amber-100/30 bg-[#18231e] p-5 shadow-2xl sm:p-8">
       <p class="text-center text-sm tracking-[0.32em] text-amber-100/70">初入青石岭</p>
       <h2 class="mt-3 text-center font-serif text-3xl font-bold text-amber-50">择一法器傍身</h2>
       <p class="mx-auto mt-3 max-w-xl text-center text-sm leading-6 text-stone-300">
@@ -30,7 +32,10 @@ const emit = defineEmits<{
           type="button"
           @click="emit('select', artifact.id)"
         >
-          <span class="text-base font-bold text-amber-100">{{ artifact.name }}</span>
+          <span class="flex items-center gap-3">
+            <ArtifactIcon :id="artifact.id" :label="artifact.name" />
+            <strong class="text-base text-amber-100">{{ artifact.name }}</strong>
+          </span>
           <span class="mt-2 block text-sm leading-6 text-stone-300">{{ artifact.description }}</span>
         </button>
       </div>

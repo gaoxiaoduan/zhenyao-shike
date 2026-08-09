@@ -59,3 +59,16 @@ button {
 canvas {
   display: block;
 }
+
+html.large-text-root {
+  font-size: 112.5%;
+}
+
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  scroll-behavior: auto !important;
+  transition-duration: 0.01ms !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+}

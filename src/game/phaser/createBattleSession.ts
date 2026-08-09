@@ -1,4 +1,7 @@
 import * as Phaser from 'phaser'
+import actorAtlasUrl from '../../assets/game/qingshi-actors.png'
+import groundTextureUrl from '../../assets/game/qingshi-ground.png'
+import { musicStageForRun, type MusicStage, type SoundCue } from '../audio/audioDirector'
 import {
   applyAscensionChoice,
   applyUpgradeChoice,
@@ -34,7 +37,6 @@ import { createInputIntent, type InputIntent } from '../domain/inputIntent'
 import {
   createInitialArtifactSelection,
   selectInitialArtifact,
-  type BaseArtifact,
   type BaseArtifactId,
 } from '../domain/initialArtifactSelection'
 import type { OnboardingStep } from '../domain/onboardingProgress'
@@ -42,10 +44,10 @@ import {
   advanceRunProgress,
   createRunProgress,
   endRun,
-  formatElapsedTime,
   grantExperience,
   type RunProgress,
 } from '../domain/runProgress'
+import { createRunSummary, type DamageSource, type RunResult } from '../domain/runSummary'
 import {
   advanceWolfKingEncounter,
   createWolfKingEncounter,
@@ -70,16 +72,16 @@ import {
 import type { CreateGameSessionOptions, GameSessionEvent } from '../session/GameSession'
 import { createGameSessionController, type BattleRuntime } from '../session/GameSessionController'
 
-const BATTLE_WIDTH = 1280
-const BATTLE_HEIGHT = 720
+const BATTLE_BASE_WIDTH = 1280
 const WORLD_SIZE = 2048
 const PLAYER_SPEED = 36
 const CAMERA_WORLD_WIDTH = WORLD_SIZE * 0.2
-const CAMERA_ZOOM = BATTLE_WIDTH / CAMERA_WORLD_WIDTH
+const CAMERA_ZOOM = BATTLE_BASE_WIDTH / CAMERA_WORLD_WIDTH
 const HUD_INTERVAL_MS = 120
 const SPAWN_INTERVAL_MS = 700
 const SPELL_COOLDOWN_MS = 6_000
 const SPELL_DAMAGE = 18
+const RESULT_FREEZE_MS = 600
 
 const ABANDONED_VILLAGE = { x: 1160, y: 1040, width: 290, height: 190 } as const
 
@@ -92,6 +94,7 @@ interface Enemy {
   radius: number
   speed: number
   color: number
+  sprite: Phaser.GameObjects.Image
 }
 
 interface BossSpatialState {
@@ -99,6 +102,7 @@ interface BossSpatialState {
   x: number
   y: number
   readonly radius: number
+  readonly sprite: Phaser.GameObjects.Image
 }
 
 type CombatTarget = Enemy | BossSpatialState
@@ -129,15 +133,18 @@ interface ThunderEffect {
 
 class QingShiRidgeScene extends Phaser.Scene {
   private readonly emitSessionEvent: (event: GameSessionEvent) => void
+  private readonly renderScale: number
+  private reducedMotion: boolean
   private graphics!: Phaser.GameObjects.Graphics
+  private playerSprite!: Phaser.GameObjects.Image
   private inputIntent = createInputIntent()
   private progress: RunProgress = createRunProgress()
   private player = { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2, health: 100, maxHealth: 100 }
   private enemies: Enemy[] = []
+  private enemySpritePool: Phaser.GameObjects.Image[] = []
   private projectiles: Projectile[] = []
   private spirits: Spirit[] = []
   private thunderEffects: ThunderEffect[] = []
-  private selectedArtifact?: BaseArtifact
   private inventory: ArtifactInventory = createArtifactInventory()
   private pendingLevelUps = 0
   private awaitingUpgradeSelection = false
@@ -161,6 +168,12 @@ class QingShiRidgeScene extends Phaser.Scene {
   private boss?: WolfKingEncounter
   private bossSpatial?: BossSpatialState
   private bossHowlRemainingMs = 0
+  private musicStage: MusicStage = 'opening'
+  private defeatedEnemies = 0
+  private defeatedElites = 0
+  private finalDamageSource: DamageSource = 'unknown'
+  private viewportWidth: number
+  private viewportHeight: number
 
   private swordElapsedMs = 0
   private thunderElapsedMs = 0
@@ -172,29 +185,40 @@ class QingShiRidgeScene extends Phaser.Scene {
   private spellCooldownMs = 0
   private hudElapsedMs = HUD_INTERVAL_MS
   private ended = false
-  private hudText!: Phaser.GameObjects.Text
 
-  constructor(emitSessionEvent: (event: GameSessionEvent) => void) {
+  constructor(
+    emitSessionEvent: (event: GameSessionEvent) => void,
+    renderScale: number,
+    reducedMotion: boolean,
+    viewportWidth: number,
+    viewportHeight: number,
+  ) {
     super({ key: 'qing-shi-ridge' })
     this.emitSessionEvent = emitSessionEvent
+    this.renderScale = renderScale
+    this.reducedMotion = reducedMotion
+    this.viewportWidth = viewportWidth
+    this.viewportHeight = viewportHeight
+  }
+
+  preload() {
+    this.load.image('qingshi-ground', groundTextureUrl)
+    this.load.spritesheet('qingshi-actors', actorAtlasUrl, { frameWidth: 512, frameHeight: 512 })
   }
 
   create() {
-    this.graphics = this.add.graphics()
+    this.add
+      .tileSprite(0, 0, WORLD_SIZE, WORLD_SIZE, 'qingshi-ground')
+      .setOrigin(0)
+      .setTileScale(0.42)
+      .setDepth(-3)
+    this.graphics = this.add.graphics().setDepth(2)
+    this.playerSprite = this.add
+      .image(this.player.x, this.player.y, 'qingshi-actors', 0)
+      .setDisplaySize(72, 72)
+      .setDepth(4)
     this.cameras.main.setBounds(0, 0, WORLD_SIZE, WORLD_SIZE)
-    this.cameras.main.setZoom(CAMERA_ZOOM)
-    this.hudText = this.add
-      .text(24, 20, '', {
-        color: '#fef3c7',
-        fontFamily: 'monospace',
-        fontSize: '18px',
-        lineSpacing: 8,
-        stroke: '#090e0d',
-        strokeThickness: 5,
-      })
-      .setDepth(10)
-      .setScrollFactor(0)
-
+    this.resizeViewport(this.viewportWidth, this.viewportHeight)
     this.updateHudText()
     this.renderBattlefield()
     this.emitSessionEvent({
@@ -211,6 +235,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     const stepMs = Math.min(deltaMs, 50)
     const previousPhase = this.progress.phase
     this.progress = advanceRunProgress(this.progress, stepMs)
+    this.syncMusicStage()
     this.demonLair = updateDemonLairTrigger(this.demonLair, this.progress.elapsedMs)
     if (previousPhase === 'growth' && this.progress.phase === 'boss') {
       this.startBossEncounter()
@@ -282,9 +307,10 @@ class QingShiRidgeScene extends Phaser.Scene {
       return
     }
 
-    this.selectedArtifact = selectInitialArtifact(this.initialArtifactSelection, artifactId).selected
-    this.inventory = createArtifactInventory(artifactId)
+    const selection = selectInitialArtifact(this.initialArtifactSelection, artifactId)
+    this.inventory = createArtifactInventory(selection.selected.id)
     this.awaitingInitialArtifact = false
+    this.emitAudio('ui-confirm')
     for (let index = 0; index < 3; index += 1) {
       this.spawnEnemy()
     }
@@ -395,6 +421,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     }
 
     this.inventory = applyAscensionChoice(this.inventory, choiceId)
+    this.emitAudio('artifact-ascended')
     this.awaitingAscensionSelection = false
     this.ascensionChoices = []
     this.updateHudText()
@@ -430,6 +457,21 @@ class QingShiRidgeScene extends Phaser.Scene {
     }
   }
 
+  resizeViewport(width: number, height: number) {
+    this.viewportWidth = width
+    this.viewportHeight = height
+    if (!this.cameras?.main) {
+      return
+    }
+    this.cameras.main.setSize(width * this.renderScale, height * this.renderScale)
+    this.cameras.main.setZoom(CAMERA_ZOOM * this.renderScale)
+    this.updateCamera()
+  }
+
+  setReducedMotion(reducedMotion: boolean) {
+    this.reducedMotion = reducedMotion
+  }
+
   private startBossEncounter() {
     this.recallEnemiesForBossTransition()
     this.projectiles = []
@@ -442,12 +484,22 @@ class QingShiRidgeScene extends Phaser.Scene {
       x: Phaser.Math.Clamp(this.player.x + Math.cos(angle) * distance, 80, WORLD_SIZE - 80),
       y: Phaser.Math.Clamp(this.player.y + Math.sin(angle) * distance, 80, WORLD_SIZE - 80),
       radius: 38,
+      sprite: this.add
+        .image(this.player.x, this.player.y, 'qingshi-actors', 5)
+        .setDisplaySize(172, 172)
+        .setDepth(4),
     }
+    this.bossSpatial.sprite.setPosition(this.bossSpatial.x, this.bossSpatial.y)
     this.bossHowlRemainingMs = 0
+    this.emitSessionEvent({ type: 'audio-intent', intent: { type: 'music', stage: 'boss' } })
+    this.emitAudio('boss-arrival')
     this.updateHudText()
   }
 
   private recallEnemiesForBossTransition() {
+    for (const enemy of this.enemies) {
+      this.releaseEnemySprite(enemy.sprite)
+    }
     this.enemies = []
   }
 
@@ -485,24 +537,28 @@ class QingShiRidgeScene extends Phaser.Scene {
     )
 
     if (distance < this.bossSpatial.radius + 24) {
-      this.player.health = Math.max(
-        0,
+      this.receivePlayerDamage(
         this.player.health - WOLF_KING_CONTACT_DAMAGE_PER_SECOND * (stepMs / 1_000),
+        'wolf-king-contact',
       )
     }
   }
 
   private handleWolfKingEvents(events: readonly WolfKingEvent[]) {
     for (const event of events) {
-      if (event.type === 'summon-requested') {
+      if (event.type === 'enraged') {
+        this.emitAudio('boss-enraged')
+      } else if (event.type === 'summon-requested') {
         for (let index = 0; index < event.count; index += 1) {
           this.spawnWolfKingMinion()
         }
       } else if (event.type === 'moon-howl') {
+        this.emitAudio('boss-howl')
         this.bossHowlRemainingMs = 900
         const damage = this.boss?.phase === 'enraged' ? 18 : 10
-        this.player.health = Math.max(0, this.player.health - damage)
+        this.receivePlayerDamage(this.player.health - damage, 'moon-howl')
       } else if (event.type === 'defeated') {
+        this.emitAudio('boss-defeated')
         this.finishRun('victory')
       }
     }
@@ -522,10 +578,11 @@ class QingShiRidgeScene extends Phaser.Scene {
       x: Phaser.Math.Clamp(this.bossSpatial.x + Math.cos(angle) * distance, 36, WORLD_SIZE - 36),
       y: Phaser.Math.Clamp(this.bossSpatial.y + Math.sin(angle) * distance, 36, WORLD_SIZE - 36),
       ...stats,
+      sprite: this.createEnemySprite('qing-shi-ridge-wood-wolf', this.bossSpatial.x, this.bossSpatial.y, stats.radius),
     })
   }
 
-  private finishRun(result: 'victory' | 'defeat') {
+  private finishRun(result: RunResult) {
     if (this.ended) {
       return
     }
@@ -533,7 +590,23 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.ended = true
     this.progress = endRun(this.progress)
     this.inputIntent = createInputIntent()
-    this.emitSessionEvent({ type: 'run-ended', result })
+    this.emitSessionEvent({ type: 'run-ending', result, source: this.finalDamageSource })
+    const summary = createRunSummary({
+      result,
+      elapsedMs: this.progress.elapsedMs,
+      defeatedEnemies: this.defeatedEnemies,
+      defeatedElites: this.defeatedElites,
+      demonLairDestroyed: this.demonLair.destroyed,
+      artifacts: this.inventory.slots.map((slot) => ({
+        id: slot.id,
+        name: ARTIFACT_DEFINITIONS[slot.id].name,
+        level: slot.level,
+      })),
+      finalDamageSource: this.finalDamageSource,
+    })
+    this.time.delayedCall(RESULT_FREEZE_MS, () => {
+      this.emitSessionEvent({ type: 'run-ended', summary })
+    })
   }
 
   private movePlayer(stepMs: number) {
@@ -580,6 +653,7 @@ class QingShiRidgeScene extends Phaser.Scene {
       x: spawnPos.x,
       y: spawnPos.y,
       ...stats,
+      sprite: this.createEnemySprite(enemyId, spawnPos.x, spawnPos.y, stats.radius),
     })
   }
 
@@ -623,12 +697,23 @@ class QingShiRidgeScene extends Phaser.Scene {
     }
 
     if (pressure > 0) {
-      this.player.health = applyEnemyPressure(this.player.health, pressure, stepMs)
+      const pressuredByElite = this.enemies.some((enemy) => {
+        if (enemy.id !== 'qing-shi-ridge-elite-wolf') {
+          return false
+        }
+        return Phaser.Math.Distance.Between(enemy.x, enemy.y, this.player.x, this.player.y) < enemy.radius + 22
+      })
+      this.receivePlayerDamage(
+        applyEnemyPressure(this.player.health, pressure, stepMs),
+        pressuredByElite ? 'elite-enemy' : 'ordinary-enemy',
+      )
     }
   }
 
   private updateArtifactAttacks(stepMs: number) {
-    this.arrayRotationRad += (stepMs / 1000) * 1.5
+    if (!this.reducedMotion) {
+      this.arrayRotationRad += (stepMs / 1000) * 1.5
+    }
 
     const aliveThunder: ThunderEffect[] = []
     for (const effect of this.thunderEffects) {
@@ -658,7 +743,7 @@ class QingShiRidgeScene extends Phaser.Scene {
         this.fourArrayElapsedMs += stepMs
         if (this.fourArrayElapsedMs >= stats.intervalMs) {
           this.fourArrayElapsedMs = 0
-          this.pulseFourArray(stats)
+          this.pulseFourArray(stats, slot.id)
         }
       } else if (slot.id === 'fu-yao-yu-yi' || slot.id === 'liu-guang-jian-yi') {
         this.windBladeElapsedMs += stepMs
@@ -686,6 +771,7 @@ class QingShiRidgeScene extends Phaser.Scene {
       color: ARTIFACT_DEFINITIONS['qing-feng-jian-xia'].attackColor,
       damage: stats.damage,
     })
+    this.emitAudio('sword-cast')
     this.completeOnboardingStep('auto-attack')
   }
 
@@ -706,9 +792,11 @@ class QingShiRidgeScene extends Phaser.Scene {
       damage: stats.damage,
       aoeRadius: stats.aoeRadius,
     })
+    this.emitAudio(artifactId === 'jiu-xiao-lei-zhen' ? 'sky-thunder-cast' : 'thunder-cast')
   }
 
-  private pulseFourArray(stats: ArtifactStats) {
+  private pulseFourArray(stats: ArtifactStats, artifactId: ArtifactId = 'si-xiang-zhen-qi') {
+    this.emitAudio(artifactId === 'zhu-xie-jian-zhen' ? 'sword-array-cast' : 'array-pulse')
     for (let index = this.enemies.length - 1; index >= 0; index -= 1) {
       const enemy = this.enemies[index]
       if (!enemy) {
@@ -755,6 +843,7 @@ class QingShiRidgeScene extends Phaser.Scene {
         damage: stats.damage,
       })
     }
+    this.emitAudio(artifactId === 'liu-guang-jian-yi' ? 'light-wing-cast' : 'wind-cast')
   }
 
   private findNearestCombatTarget(): CombatTarget | undefined {
@@ -797,6 +886,16 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.handleWolfKingEvents(result.events)
   }
 
+  private receivePlayerDamage(nextHealth: number, source: DamageSource) {
+    const previousHealth = this.player.health
+    this.finalDamageSource = source
+    this.player.health = Math.max(0, nextHealth)
+    this.emitAudio('player-hurt')
+    if (previousHealth > this.player.maxHealth * 0.3 && this.player.health <= this.player.maxHealth * 0.3) {
+      this.emitAudio('player-critical')
+    }
+  }
+
   private updateProjectiles(stepMs: number) {
     const alive: Projectile[] = []
     for (const projectile of this.projectiles) {
@@ -827,6 +926,7 @@ class QingShiRidgeScene extends Phaser.Scene {
           }
 
           enemy.health = resolveDamage(enemy.health, projectile.damage)
+          this.emitAudio('ordinary-hit')
           if (enemy.health <= 0) {
             this.defeatEnemy(hitIndex)
           }
@@ -885,6 +985,7 @@ class QingShiRidgeScene extends Phaser.Scene {
       }
 
       if (distance < 24) {
+        this.emitAudio('spirit-collected')
         const result = grantExperience(this.progress, spirit.value)
         this.progress = result.progress
         this.completeOnboardingStep('collect-spirit')
@@ -982,6 +1083,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     }
 
     this.spellCooldownMs = SPELL_COOLDOWN_MS
+    this.emitAudio('spell-cast')
     this.completeOnboardingStep('cast-spell')
     for (let index = this.enemies.length - 1; index >= 0; index -= 1) {
       const enemy = this.enemies[index]
@@ -1007,7 +1109,13 @@ class QingShiRidgeScene extends Phaser.Scene {
       return
     }
 
+    this.releaseEnemySprite(enemy.sprite)
     this.enemies.splice(index, 1)
+    this.defeatedEnemies += 1
+    if (enemy.id === 'qing-shi-ridge-elite-wolf') {
+      this.defeatedElites += 1
+    }
+    this.emitAudio('enemy-defeated')
     this.spirits.push({ x: enemy.x, y: enemy.y, value: 2 })
   }
 
@@ -1020,12 +1128,46 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.emitSessionEvent({ type: 'onboarding-step-completed', step })
   }
 
-  private updateHudText() {
-    const artifactList =
-      this.inventory.slots.length > 0
-        ? this.inventory.slots.map((s) => `${ARTIFACT_DEFINITIONS[s.id].name} Lv.${s.level}`).join(' | ')
-        : this.selectedArtifact?.name ?? '择一法器'
+  private syncMusicStage() {
+    const nextStage = musicStageForRun(this.progress.elapsedMs, this.progress.phase)
+    if (nextStage === this.musicStage) {
+      return
+    }
 
+    this.musicStage = nextStage
+    this.emitSessionEvent({ type: 'audio-intent', intent: { type: 'music', stage: nextStage } })
+  }
+
+  private emitAudio(cue: SoundCue) {
+    this.emitSessionEvent({ type: 'audio-intent', intent: { type: 'effect', cue } })
+  }
+
+  private createEnemySprite(id: string, x: number, y: number, radius: number) {
+    const frame = id === 'qing-shi-ridge-boar-demon'
+      ? 1
+      : id === 'qing-shi-ridge-mist-moth'
+        ? 3
+        : id === 'qing-shi-ridge-elite-wolf'
+          ? 4
+          : 2
+    const sprite = this.enemySpritePool.pop() ?? this.add.image(x, y, 'qingshi-actors', frame)
+    return sprite
+      .setActive(true)
+      .setVisible(true)
+      .setTexture('qingshi-actors', frame)
+      .setPosition(x, y)
+      .setDisplaySize(radius * 4.8, radius * 4.8)
+      .setAlpha(1)
+      .clearTint()
+      .setDepth(4)
+  }
+
+  private releaseEnemySprite(sprite: Phaser.GameObjects.Image) {
+    sprite.setActive(false).setVisible(false).clearTint()
+    this.enemySpritePool.push(sprite)
+  }
+
+  private updateHudText() {
     let stageStatus = '成长阶段'
     if (this.boss) {
       stageStatus = `${
@@ -1040,17 +1182,30 @@ class QingShiRidgeScene extends Phaser.Scene {
       stageStatus = `🔥 妖巢暴动 ${Math.ceil(this.demonLair.health)}/${this.demonLair.maxHealth}`
     }
 
-    this.hudText.setText([
-      `${artifactList}  ·  灵蕴进度 ${this.progress.level}`,
-      `生命 ${Math.ceil(this.player.health)}/${this.player.maxHealth}  ·  妖物 ${this.enemies.length}`,
-      `${stageStatus}  ·  灵蕴 ${this.progress.experience}/${this.progress.experienceToNextLevel}`,
-      `玄光 ${Math.ceil(this.spellCooldownMs / 1_000)}  ·  ${formatElapsedTime(this.progress.elapsedMs)}`,
-    ])
+    this.emitSessionEvent({
+      type: 'hud-updated',
+      snapshot: {
+        health: Math.ceil(this.player.health),
+        maxHealth: this.player.maxHealth,
+        level: this.progress.level,
+        experience: this.progress.experience,
+        experienceToNextLevel: this.progress.experienceToNextLevel,
+        elapsedMs: this.progress.elapsedMs,
+        enemyCount: this.enemies.length,
+        stageLabel: stageStatus,
+        spellCooldownMs: this.spellCooldownMs,
+        artifacts: this.inventory.slots.map((slot) => ({
+          id: slot.id,
+          name: ARTIFACT_DEFINITIONS[slot.id].name,
+          level: slot.level,
+        })),
+      },
+    })
   }
 
   private renderBattlefield() {
     this.graphics.clear()
-    this.graphics.fillStyle(0x12251d, 1).fillRect(0, 0, WORLD_SIZE, WORLD_SIZE)
+    this.graphics.fillStyle(0x07130d, 0.24).fillRect(0, 0, WORLD_SIZE, WORLD_SIZE)
     this.graphics.lineStyle(2, 0x496454, 0.55).strokeRect(16, 16, WORLD_SIZE - 32, WORLD_SIZE - 32)
     this.graphics.lineStyle(34, 0x3e4d34, 0.7).lineBetween(130, 1860, 1870, 250)
     this.graphics.fillStyle(0x554536, 0.9).fillRect(ABANDONED_VILLAGE.x, ABANDONED_VILLAGE.y, ABANDONED_VILLAGE.width, ABANDONED_VILLAGE.height)
@@ -1123,23 +1278,22 @@ class QingShiRidgeScene extends Phaser.Scene {
 
     // Render enemies
     for (const enemy of this.enemies) {
+      enemy.sprite.setPosition(enemy.x, enemy.y)
       if (enemy.id === 'qing-shi-ridge-elite-wolf') {
         this.graphics.lineStyle(3, 0xf59e0b, 0.9).strokeCircle(enemy.x, enemy.y, enemy.radius + 6)
       }
-      this.graphics.fillStyle(enemy.color, 1).fillCircle(enemy.x, enemy.y, enemy.radius)
-      this.graphics.lineStyle(2, 0x2a180f, 0.7).strokeCircle(enemy.x, enemy.y, enemy.radius)
     }
 
     if (this.boss && this.bossSpatial && this.boss.phase !== 'defeated') {
       const isArrival = this.boss.phase === 'arrival'
       const isEnraged = this.boss.phase === 'enraged'
-      const pulse = isArrival ? 0.5 + Math.sin(this.boss.introRemainingMs / 180) * 0.25 : 0.7
+      const pulse = isArrival && !this.reducedMotion
+        ? 0.5 + Math.sin(this.boss.introRemainingMs / 180) * 0.25
+        : 0.7
       const bossColor = isEnraged ? 0xf87171 : 0xc084fc
-      this.graphics.fillStyle(bossColor, isArrival ? 0.18 : 0.9).fillCircle(
-        this.bossSpatial.x,
-        this.bossSpatial.y,
-        this.bossSpatial.radius,
-      )
+      this.bossSpatial.sprite.setPosition(this.bossSpatial.x, this.bossSpatial.y)
+      this.bossSpatial.sprite.setAlpha(isArrival ? 0.35 : 1)
+      this.bossSpatial.sprite.setTint(isEnraged ? 0xffb4b4 : 0xffffff)
       this.graphics.lineStyle(isArrival ? 4 : 3, bossColor, pulse)
       this.graphics.strokeCircle(this.bossSpatial.x, this.bossSpatial.y, this.bossSpatial.radius + 12)
       if (isArrival || this.bossHowlRemainingMs > 0) {
@@ -1167,26 +1321,35 @@ class QingShiRidgeScene extends Phaser.Scene {
       this.graphics.lineStyle(4, 0xd8f3ff, 0.7).strokeCircle(this.player.x, this.player.y, 88)
     }
 
-    // Render player
-    this.graphics.fillStyle(0xe9d5a1, 1).fillCircle(this.player.x, this.player.y, 18)
-    this.graphics.lineStyle(3, 0xffffff, 0.85).strokeCircle(this.player.x, this.player.y, 18)
+    // Render player status beneath the authored sprite.
+    this.playerSprite.setPosition(this.player.x, this.player.y)
     this.graphics.fillStyle(0x13241d, 0.9).fillRect(this.player.x - 32, this.player.y - 35, 64, 6)
     this.graphics.fillStyle(0xef9a66, 1).fillRect(this.player.x - 32, this.player.y - 35, 64 * (this.player.health / this.player.maxHealth), 6)
   }
 }
 
 export function createBattleSession(options: CreateGameSessionOptions) {
-  const scene = new QingShiRidgeScene(options.onEvent)
+  const scene = new QingShiRidgeScene(
+    options.onEvent,
+    options.renderScale,
+    options.reducedMotion,
+    options.viewport.internalWidth,
+    options.viewport.internalHeight,
+  )
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: options.parent,
-    width: BATTLE_WIDTH,
-    height: BATTLE_HEIGHT,
+    width: options.viewport.internalWidth * options.renderScale,
+    height: options.viewport.internalHeight * options.renderScale,
+    antialias: false,
+    pixelArt: true,
+    roundPixels: true,
     backgroundColor: '#12251d',
     scene,
     scale: {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
+      autoRound: true,
     },
   })
 
@@ -1199,6 +1362,14 @@ export function createBattleSession(options: CreateGameSessionOptions) {
     tunaHeal: () => scene.tunaHeal(),
     skipOnboarding: () => scene.skipOnboarding(),
     setInputIntent: (intent) => scene.setInputIntent(intent),
+    resize: (viewport) => {
+      game.scale.setGameSize(
+        viewport.internalWidth * options.renderScale,
+        viewport.internalHeight * options.renderScale,
+      )
+      scene.resizeViewport(viewport.internalWidth, viewport.internalHeight)
+    },
+    setReducedMotion: (reducedMotion) => scene.setReducedMotion(reducedMotion),
     setPaused: (paused) => scene.setPaused(paused),
     destroy: () => game.destroy(true),
   }

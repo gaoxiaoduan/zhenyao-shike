@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AscensionRecipe, UpgradeChoice } from '../game/domain/artifactInventory'
 import type { ZhouTianOption } from '../game/domain/deductionAndZhouTian'
+import ArtifactIcon from './game/ArtifactIcon.vue'
 
 defineProps<{
   choices: readonly (UpgradeChoice | ZhouTianOption)[]
@@ -26,9 +27,10 @@ function isUpgradeChoice(item: UpgradeChoice | ZhouTianOption): item is UpgradeC
   <div
     class="upgrade-selection absolute inset-0 z-50 grid place-items-center bg-stone-950/85 p-5 backdrop-blur-md"
     role="dialog"
+    aria-modal="true"
     aria-label="法器突破与构筑升级"
   >
-    <div class="w-full max-w-4xl rounded-lg border border-amber-100/35 bg-[#18231e] p-5 shadow-2xl sm:p-8">
+    <div class="max-h-[calc(100svh-2.5rem)] w-full max-w-4xl overflow-y-auto rounded-lg border border-amber-100/35 bg-[#18231e] p-5 shadow-2xl sm:p-8">
       <p class="text-center text-sm tracking-[0.35em] text-amber-200/80">
         {{ isZhouTian ? '法器满阶 · 周天运转' : '灵蕴满溢 · 领悟升级' }}
       </p>
@@ -52,10 +54,10 @@ function isUpgradeChoice(item: UpgradeChoice | ZhouTianOption): item is UpgradeC
           @click="emit('select', choice.choiceId)"
         >
           <div>
-            <div class="flex items-center justify-between">
-              <span class="text-lg font-bold text-amber-100 group-hover:text-amber-200">
-                {{ choice.name }}
-              </span>
+            <div class="flex items-center gap-3">
+              <ArtifactIcon v-if="isUpgradeChoice(choice)" :id="choice.artifactId" :label="choice.name" />
+              <span v-else class="grid size-11 shrink-0 place-items-center rounded border border-cyan-300/30 bg-cyan-950/45 text-xl text-cyan-100">周</span>
+              <span class="min-w-0 flex-1 text-lg font-bold text-amber-100 group-hover:text-amber-200">{{ choice.name }}</span>
               <span
                 v-if="isUpgradeChoice(choice)"
                 class="rounded border px-2 py-0.5 text-xs font-medium tracking-wider"
@@ -96,7 +98,7 @@ function isUpgradeChoice(item: UpgradeChoice | ZhouTianOption): item is UpgradeC
           :disabled="deductionCount <= 0 || isZhouTian"
           @click="emit('deduce')"
         >
-          <span>🔮 推演重抽</span>
+          <span>推演重抽</span>
           <span class="rounded-full bg-cyan-900/80 px-2 py-0.5 text-xs text-cyan-200">
             剩余 {{ deductionCount }} 次
           </span>
@@ -107,7 +109,7 @@ function isUpgradeChoice(item: UpgradeChoice | ZhouTianOption): item is UpgradeC
           type="button"
           @click="emit('tuna')"
         >
-          <span>🧘 吐纳调息</span>
+          <span>吐纳调息</span>
           <span class="text-xs text-emerald-300/90">（放弃本次升级，回复 15% 生命）</span>
         </button>
       </div>
@@ -138,10 +140,13 @@ function isUpgradeChoice(item: UpgradeChoice | ZhouTianOption): item is UpgradeC
             type="button"
             @click="emit('selectAscension', ascension.choiceId)"
           >
-            <span class="text-xs tracking-wide text-stone-400">
-              {{ ascension.sourceNames.join(' + ') }}
+            <span class="flex items-center gap-3">
+              <ArtifactIcon :id="ascension.resultId" :label="ascension.name" />
+              <span>
+                <small class="block text-xs tracking-wide text-stone-400">{{ ascension.sourceNames.join(' + ') }}</small>
+                <strong class="mt-1 block text-lg text-fuchsia-100">{{ ascension.name }}</strong>
+              </span>
             </span>
-            <strong class="mt-2 block text-lg text-fuchsia-100">{{ ascension.name }}</strong>
             <span class="mt-2 block text-xs leading-5 text-stone-300">{{ ascension.description }}</span>
             <span class="mt-3 block text-xs font-semibold text-fuchsia-200/90">
               法器槽 {{ ascension.slotCountBefore }} ➔ {{ ascension.slotCountAfter }} · 成型后不再升级
@@ -156,4 +161,3 @@ function isUpgradeChoice(item: UpgradeChoice | ZhouTianOption): item is UpgradeC
     </div>
   </div>
 </template>
-

@@ -13,6 +13,8 @@ function createRuntime(): BattleRuntime {
     tunaHeal: vi.fn(),
     skipOnboarding: vi.fn(),
     setInputIntent: vi.fn(),
+    resize: vi.fn(),
+    setReducedMotion: vi.fn(),
     setPaused: vi.fn(),
   }
 }
@@ -91,5 +93,31 @@ describe('历练会话', () => {
 
     expect(runtime.deduceUpgrade).toHaveBeenCalledOnce()
     expect(runtime.tunaHeal).toHaveBeenCalledOnce()
+  })
+
+  it('将桌面视口变化转交给战场运行时', () => {
+    const runtime = createRuntime()
+    const session = createGameSessionController(runtime)
+    const viewport = {
+      aspectRatio: 21 / 9,
+      internalWidth: 1680,
+      internalHeight: 720,
+      requiresOrientation: false,
+      requiresLargerWindow: false,
+      hasInformationWings: false,
+    }
+
+    session.resize(viewport)
+
+    expect(runtime.resize).toHaveBeenCalledWith(viewport)
+  })
+
+  it('将运行中的减少动态设置同步到战场表现', () => {
+    const runtime = createRuntime()
+    const session = createGameSessionController(runtime)
+
+    session.setReducedMotion(true)
+
+    expect(runtime.setReducedMotion).toHaveBeenCalledWith(true)
   })
 })
