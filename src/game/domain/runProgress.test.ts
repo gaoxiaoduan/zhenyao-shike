@@ -33,12 +33,12 @@ describe('run progress', () => {
   })
 
   it('carries excess experience into following levels', () => {
-    expect(createRunProgress().experienceToNextLevel).toBe(18)
-    const result = grantExperience(createRunProgress(), 45)
+    expect(createRunProgress().experienceToNextLevel).toBe(22)
+    const result = grantExperience(createRunProgress(), 60)
 
     expect(result.levelsGained).toBe(2)
     expect(result.progress.level).toBe(3)
-    expect(result.progress.experience).toBe(1)
+    expect(result.progress.experience).toBe(4)
     expect(result.progress.experienceToNextLevel).toBe(experienceRequiredForLevel(3))
   })
 
