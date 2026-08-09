@@ -9,7 +9,6 @@ describe('妖物职责行为', () => {
     const recovery = advanceEnemyBehavior('armored-charger', charging.nextState, { deltaMs: 550, distanceToPlayer: 80 })
 
     expect(warning.nextState.action).toBe('windup')
-    expect(warning.telegraph).toBe(true)
     expect(charging.nextState.action).toBe('charge')
     expect(charging.speedMultiplier).toBeGreaterThan(3)
     expect(recovery.nextState.action).toBe('recover')

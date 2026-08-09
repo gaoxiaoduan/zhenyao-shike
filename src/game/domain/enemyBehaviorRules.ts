@@ -20,7 +20,6 @@ export interface EnemyBehaviorResult {
   readonly nextState: EnemyBehaviorState
   readonly speedMultiplier: number
   readonly contactEnabled: boolean
-  readonly telegraph: boolean
   readonly shouldFireProjectile: boolean
   readonly vulnerableMultiplier: number
 }
@@ -106,7 +105,6 @@ export function advanceEnemyBehavior(
     nextState,
     speedMultiplier,
     contactEnabled: nextState.action !== 'windup' && nextState.action !== 'recover',
-    telegraph: nextState.action === 'windup',
     shouldFireProjectile,
     vulnerableMultiplier: role === 'elite-pouncer' && nextState.recoveryIsVulnerable ? 1.65 : 1,
   }

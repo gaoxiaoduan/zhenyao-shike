@@ -72,7 +72,7 @@ describe('BattlefieldGame input adapter', () => {
     const choices = generateUpgradeChoices(createArtifactInventory('qing-feng-jian-xia'), 3)
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w' }))
-    battleHarness.onEvent?.({ type: 'upgrade-requested', choices, deductionCount: 1 })
+    battleHarness.onEvent?.({ type: 'upgrade-requested', choices, deductionCount: 1, canDeduce: true })
     await nextTick()
     await wrapper.get('[aria-label="法器突破与构筑升级"]').trigger('keydown', { key: '1' })
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onMounted, useTemplateRef } from 'vue'
 import type { BaseArtifact } from '../game/domain/initialArtifactSelection'
 import ArtifactIcon from './game/ArtifactIcon.vue'
+import { useChoiceDialogHotkeys } from './useChoiceDialogHotkeys'
 
 const props = defineProps<{
   candidates: readonly BaseArtifact[]
@@ -11,20 +11,15 @@ const emit = defineEmits<{
   select: [artifactId: BaseArtifact['id']]
 }>()
 
-const dialog = useTemplateRef<HTMLElement>('dialog')
-
-function handleChoiceHotkey(event: KeyboardEvent) {
-  const slot = Number(event.key) - 1
+const { handleChoiceHotkey } = useChoiceDialogHotkeys((slot, event) => {
   const candidate = props.candidates[slot]
-  if (!candidate || slot < 0 || slot > 2) {
+  if (!candidate) {
     return
   }
 
   event.preventDefault()
   emit('select', candidate.id)
-}
-
-onMounted(() => dialog.value?.focus())
+})
 </script>
 
 <template>

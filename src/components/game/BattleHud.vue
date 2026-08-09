@@ -62,6 +62,7 @@ const spellKey = computed(() => displayControlKey(props.keyBindings.castSpell[0]
         <div><dt>时间</dt><dd>{{ formatElapsedTime(snapshot?.elapsedMs ?? 0) }}</dd></div>
         <div><dt>妖物</dt><dd>{{ snapshot?.enemyCount ?? 0 }}</dd></div>
         <div><dt>身法</dt><dd>{{ snapshot?.movementActive ? '移动中' : '驻足' }}</dd></div>
+        <div><dt>行程</dt><dd aria-label="移动距离">{{ snapshot?.distanceTravelled ?? 0 }} 步</dd></div>
       </dl>
       <div v-if="snapshot?.eliteCount" class="battle-hud__elite" aria-live="polite">
         <span><strong>精英威胁 × {{ snapshot.eliteCount }}</strong><small>场内生命条</small></span>
@@ -181,7 +182,7 @@ const spellKey = computed(() => displayControlKey(props.keyBindings.castSpell[0]
 
 .battle-hud__stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 0.35rem;
   margin: 0.8rem 0;
 }

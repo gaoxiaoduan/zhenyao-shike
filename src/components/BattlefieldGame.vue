@@ -56,6 +56,7 @@ const initialArtifactCandidates = shallowRef<readonly BaseArtifact[]>([])
 const upgradeChoices = shallowRef<readonly (UpgradeDraftChoice | ZhouTianOption)[]>([])
 const ascensionChoices = shallowRef<readonly AscensionRecipe[]>([])
 const deductionCount = shallowRef(1)
+const canDeduce = shallowRef(false)
 const isZhouTian = shallowRef(false)
 const onboardingProgress = shallowRef<OnboardingProgress>(createOnboardingProgress())
 const hudSnapshot = shallowRef<BattleHudSnapshot | null>(null)
@@ -138,6 +139,7 @@ function handleSessionEvent(event: GameSessionEvent) {
   if (event.type === 'upgrade-requested') {
     upgradeChoices.value = event.choices
     deductionCount.value = event.deductionCount
+    canDeduce.value = event.canDeduce
     isZhouTian.value = !!event.isZhouTian
     session.value?.pause('upgrade')
     return
@@ -387,8 +389,8 @@ onMounted(() => {
     reducedMotion: props.settings.reducedMotion,
     compactRadar: !desktopMedia.matches,
     runSeed: Date.now(),
-    elapsedTimeScale: import.meta.env.DEV && new URLSearchParams(window.location.search).get('e2e-time') === '60'
-      ? 60
+    elapsedTimeScale: import.meta.env.DEV && new URLSearchParams(window.location.search).get('e2e-time') === '30'
+      ? 30
       : 1,
   })
   window.addEventListener('resize', syncViewport)
@@ -457,6 +459,7 @@ onUnmounted(() => {
       :choices="upgradeChoices"
       :ascensions="ascensionChoices"
       :deduction-count="deductionCount"
+      :can-deduce="canDeduce"
       :is-zhou-tian="isZhouTian"
       @select="selectUpgrade"
       @select-ascension="selectAscension"

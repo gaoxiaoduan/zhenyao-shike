@@ -205,6 +205,7 @@ class QingShiRidgeScene extends Phaser.Scene {
   private attackIntervalMultiplier = 1.0
   private playerMaxHealthMultiplier = 1.0
   private terrainLayout: QingShiRidgeTerrainLayout = generateQingShiRidgeLayout(Phaser.Math.Between(1, 9999))
+  private readonly discoveredLandmarkIds = new Set<string>()
   private demonLair: DemonLairState = createDemonLairState(WORLD_SIZE)
   private lastEliteSpawnMs: number | null = null
   private readonly initialArtifactSelection = createInitialArtifactSelection()
@@ -218,6 +219,7 @@ class QingShiRidgeScene extends Phaser.Scene {
   private musicStage: MusicStage = 'opening'
   private defeatedEnemies = 0
   private defeatedElites = 0
+  private distanceTravelled = 0
   private finalDamageSource: DamageSource = 'unknown'
   private viewportWidth: number
   private viewportHeight: number
@@ -283,6 +285,7 @@ class QingShiRidgeScene extends Phaser.Scene {
       .setDepth(4)
     this.cameras.main.setBounds(0, 0, WORLD_SIZE, WORLD_SIZE)
     this.resizeViewport(this.viewportWidth, this.viewportHeight)
+    this.updateDiscoveredLandmarks()
     this.updateHudText()
     this.renderBattlefield()
     this.emitSessionEvent({
@@ -343,6 +346,9 @@ class QingShiRidgeScene extends Phaser.Scene {
     const densityMultiplier = isTeaching ? 1 : spawnDirective.intervalMultiplier
     const spawnIntervalMs = waveStage.spawnIntervalMs * densityMultiplier * (isTeaching ? 1.4 : 1)
     const enemyLimit = isTeaching ? Math.min(14, waveStage.activeEnemyTarget) : waveStage.activeEnemyTarget
+    if (this.progress.phase === 'growth' && this.isEliteSpawnDue()) {
+      this.spawnEnemy(undefined, true)
+    }
     if (this.progress.phase === 'growth' && this.spawnElapsedMs >= spawnIntervalMs && this.enemies.length < enemyLimit) {
       this.spawnElapsedMs = 0
       const burstCount = isTeaching ? 1 : spawnDirective.burstCount
@@ -480,7 +486,12 @@ class QingShiRidgeScene extends Phaser.Scene {
       return
     }
 
-    if (!canPerformDeduction(this.deductionState)) {
+    if (!canPerformDeduction(
+      this.deductionState,
+      this.upgradeChoices,
+      this.inventory,
+      this.upgradeDraftState,
+    )) {
       return
     }
 
@@ -497,6 +508,12 @@ class QingShiRidgeScene extends Phaser.Scene {
       type: 'upgrade-requested',
       choices: this.upgradeChoices,
       deductionCount: this.deductionState.remainingCount,
+      canDeduce: canPerformDeduction(
+        this.deductionState,
+        this.upgradeChoices,
+        this.inventory,
+        this.upgradeDraftState,
+      ),
       isZhouTian: false,
     })
   }
@@ -739,15 +756,40 @@ class QingShiRidgeScene extends Phaser.Scene {
       }
     }
 
+    const previousX = this.player.x
+    const previousY = this.player.y
     const distance = PLAYER_SPEED * speedMultiplier * (stepMs / 1_000)
     this.player.x = Phaser.Math.Clamp(this.player.x + this.inputIntent.moveX * distance, 28, WORLD_SIZE - 28)
     this.player.y = Phaser.Math.Clamp(this.player.y + this.inputIntent.moveY * distance, 28, WORLD_SIZE - 28)
+    this.distanceTravelled += Phaser.Math.Distance.Between(previousX, previousY, this.player.x, this.player.y)
+    this.updateDiscoveredLandmarks()
     if (this.inputIntent.moveX !== 0 || this.inputIntent.moveY !== 0) {
       this.completeOnboardingStep('move')
     }
   }
 
-  private spawnEnemy(commonEnemyId?: QingShiRidgeEnemyId) {
+  private updateDiscoveredLandmarks() {
+    const village = this.terrainLayout.village
+    const villageCenter = { x: village.x + village.width / 2, y: village.y + village.height / 2 }
+    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, villageCenter.x, villageCenter.y) <= 360) {
+      this.discoveredLandmarkIds.add('abandoned-village')
+    }
+    this.terrainLayout.spiritNodes.forEach((node, index) => {
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, node.x, node.y) <= 260) {
+        this.discoveredLandmarkIds.add(`spirit-node-${index}`)
+      }
+    })
+  }
+
+  private isEliteSpawnDue() {
+    return shouldSpawnElite({
+      elapsedMs: this.progress.elapsedMs,
+      lastEliteSpawnMs: this.lastEliteSpawnMs,
+      activeEliteCount: this.enemies.filter((enemy) => enemy.isElite).length,
+    })
+  }
+
+  private spawnEnemy(commonEnemyId?: QingShiRidgeEnemyId, forceElite = false) {
     const cam = this.cameras.main
     const cameraWorld = {
       x: cam.worldView.x,
@@ -757,12 +799,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     }
 
     const spawnPos = getOffscreenSpawnPosition(cameraWorld, WORLD_SIZE, 80)
-    const activeEliteCount = this.enemies.filter((enemy) => enemy.isElite).length
-    const spawnElite = shouldSpawnElite({
-      elapsedMs: this.progress.elapsedMs,
-      lastEliteSpawnMs: this.lastEliteSpawnMs,
-      activeEliteCount,
-    })
+    const spawnElite = forceElite || this.isEliteSpawnDue()
     const waveStage = getDemonWaveStage(this.progress.elapsedMs)
     const enemyId: QingShiRidgeEnemyId = spawnElite
       ? 'qing-shi-ridge-elite-wolf'
@@ -1242,6 +1279,12 @@ class QingShiRidgeScene extends Phaser.Scene {
         type: 'upgrade-requested',
         choices,
         deductionCount: this.deductionState.remainingCount,
+        canDeduce: canPerformDeduction(
+          this.deductionState,
+          choices,
+          this.inventory,
+          this.upgradeDraftState,
+        ),
         isZhouTian: false,
       })
       return
@@ -1266,6 +1309,7 @@ class QingShiRidgeScene extends Phaser.Scene {
         type: 'upgrade-requested',
         choices: zhouTianChoices,
         deductionCount: this.deductionState.remainingCount,
+        canDeduce: false,
         isZhouTian: true,
       })
       return
@@ -1440,6 +1484,7 @@ class QingShiRidgeScene extends Phaser.Scene {
         elapsedMs: this.progress.elapsedMs,
         enemyCount: this.enemies.length,
         movementActive: this.inputIntent.moveX !== 0 || this.inputIntent.moveY !== 0,
+        distanceTravelled: Math.floor(this.distanceTravelled),
         eliteCount: elites.length,
         weakestEliteHealthPercent,
         stageLabel: stageStatus,
@@ -1701,6 +1746,42 @@ class QingShiRidgeScene extends Phaser.Scene {
       radar.fillStyle(0x6ee7b7, 0.78).fillCircle(point.x, point.y, radius)
     }
 
+    const village = this.terrainLayout.village
+    const landmarks = [
+      {
+        id: 'abandoned-village',
+        x: village.x + village.width / 2,
+        y: village.y + village.height / 2,
+        color: 0xd6b96d,
+      },
+      ...this.terrainLayout.spiritNodes.map((node, index) => ({
+        id: `spirit-node-${index}`,
+        x: node.x,
+        y: node.y,
+        color: 0x38bdf8,
+      })),
+    ].filter((landmark) => this.discoveredLandmarkIds.has(landmark.id))
+    for (const landmark of landmarks) {
+      const point = projectRadarPoint(landmark, WORLD_SIZE, bounds)
+      const radius = 4.5 / this.cameraZoom
+      radar.fillStyle(landmark.color, 1).fillTriangle(
+        point.x,
+        point.y - radius,
+        point.x + radius,
+        point.y,
+        point.x,
+        point.y + radius,
+      )
+      radar.fillTriangle(
+        point.x,
+        point.y - radius,
+        point.x - radius,
+        point.y,
+        point.x,
+        point.y + radius,
+      )
+    }
+
     for (const enemy of this.enemies) {
       if (!enemy.isElite) {
         continue
@@ -1728,6 +1809,12 @@ class QingShiRidgeScene extends Phaser.Scene {
     const player = projectRadarPoint(this.player, WORLD_SIZE, bounds)
     radar.fillStyle(0x67e8f9, 1).fillCircle(player.x, player.y, 4.2 / this.cameraZoom)
     radar.lineStyle(1.5 / this.cameraZoom, 0xffffff, 0.95).strokeCircle(player.x, player.y, 6.2 / this.cameraZoom)
+
+    const radarHost = this.game.canvas.parentElement
+    radarHost?.setAttribute('data-radar-rendered', 'true')
+    radarHost?.setAttribute('data-radar-enemy-regions', String(commonEnemyCells.length))
+    radarHost?.setAttribute('data-radar-spirit-regions', String(spiritCells.length))
+    radarHost?.setAttribute('data-radar-landmarks', String(landmarks.length))
   }
 }
 

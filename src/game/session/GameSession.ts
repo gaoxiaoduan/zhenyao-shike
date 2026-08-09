@@ -20,6 +20,7 @@ export interface BattleHudSnapshot {
   readonly elapsedMs: number
   readonly enemyCount: number
   readonly movementActive: boolean
+  readonly distanceTravelled: number
   readonly eliteCount: number
   readonly weakestEliteHealthPercent: number | null
   readonly stageLabel: string
@@ -33,6 +34,7 @@ export type GameSessionEvent =
       readonly type: 'upgrade-requested'
       readonly choices: readonly (UpgradeDraftChoice | ZhouTianOption)[]
       readonly deductionCount: number
+      readonly canDeduce: boolean
       readonly isZhouTian?: boolean
     }
   | { readonly type: 'ascension-requested'; readonly choices: readonly AscensionRecipe[] }

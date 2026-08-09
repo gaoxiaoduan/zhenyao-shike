@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { onMounted, useTemplateRef } from 'vue'
 import type { AscensionRecipe, FlexibleUpgradeChoice, UpgradeChoice, UpgradeDraftChoice } from '../game/domain/artifactInventory'
 import type { ZhouTianOption } from '../game/domain/deductionAndZhouTian'
 import ArtifactIcon from './game/ArtifactIcon.vue'
+import { useChoiceDialogHotkeys } from './useChoiceDialogHotkeys'
 
 const props = defineProps<{
   choices: readonly (UpgradeDraftChoice | ZhouTianOption)[]
   ascensions: readonly AscensionRecipe[]
   deductionCount: number
+  canDeduce?: boolean
   isZhouTian?: boolean
 }>()
 
@@ -27,15 +28,8 @@ function isFlexibleChoice(item: UpgradeDraftChoice | ZhouTianOption): item is Fl
   return 'type' in item && item.type === 'flex'
 }
 
-const dialog = useTemplateRef<HTMLElement>('dialog')
-
-function handleChoiceHotkey(event: KeyboardEvent) {
-  const slot = Number(event.key) - 1
+const { handleChoiceHotkey } = useChoiceDialogHotkeys((slot, event) => {
   const choice = props.choices[slot]
-  if (slot < 0 || slot > 2) {
-    return
-  }
-
   if (choice) {
     event.preventDefault()
     emit('select', choice.choiceId)
@@ -47,9 +41,7 @@ function handleChoiceHotkey(event: KeyboardEvent) {
     event.preventDefault()
     emit('selectAscension', ascension.choiceId)
   }
-}
-
-onMounted(() => dialog.value?.focus())
+})
 </script>
 
 <template>
@@ -138,12 +130,12 @@ onMounted(() => dialog.value?.focus())
         <button
           class="flex items-center gap-2 rounded-md border border-cyan-300/40 bg-cyan-950/40 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-900/60 disabled:cursor-not-allowed disabled:opacity-40"
           type="button"
-          :disabled="deductionCount <= 0 || isZhouTian"
+          :disabled="deductionCount <= 0 || canDeduce === false || isZhouTian"
           @click="emit('deduce')"
         >
           <span>推演重抽</span>
           <span class="rounded-full bg-cyan-900/80 px-2 py-0.5 text-xs text-cyan-200">
-            剩余 {{ deductionCount }} 次
+            {{ canDeduce === false && deductionCount > 0 ? '本轮候选不足' : `剩余 ${deductionCount} 次` }}
           </span>
         </button>
 

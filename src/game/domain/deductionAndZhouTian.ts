@@ -11,8 +11,22 @@ export function createDeductionState(initialCount = 1): DeductionState {
   }
 }
 
-export function canPerformDeduction(state: DeductionState): boolean {
-  return state.remainingCount > 0
+export function canPerformDeduction(
+  state: DeductionState,
+  currentChoices?: readonly UpgradeDraftChoice[],
+  inventory?: ArtifactInventory,
+  draftState?: UpgradeDraftState,
+): boolean {
+  if (state.remainingCount <= 0) {
+    return false
+  }
+  if (!currentChoices || !inventory || !draftState) {
+    return true
+  }
+  return draftUpgradeChoices(inventory, draftState, {
+    count: 3,
+    excludedChoiceIds: currentChoices.map((choice) => choice.choiceId),
+  }).choices.length === 3
 }
 
 export function performDeduction(
@@ -25,7 +39,7 @@ export function performDeduction(
   readonly newChoices: readonly UpgradeDraftChoice[]
   readonly nextDraftState: UpgradeDraftState
 } {
-  if (!canPerformDeduction(state)) {
+  if (state.remainingCount <= 0) {
     throw new Error('推演次数已用尽。')
   }
 
@@ -33,6 +47,9 @@ export function performDeduction(
     count: 3,
     excludedChoiceIds: currentChoices.map((choice) => choice.choiceId),
   })
+  if (draft.choices.length < 3) {
+    throw new Error('不重复候选不足三张，本次推演未消耗。')
+  }
 
   return {
     nextState: {

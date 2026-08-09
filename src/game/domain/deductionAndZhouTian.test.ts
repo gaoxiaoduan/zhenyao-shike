@@ -53,6 +53,20 @@ describe('deductionAndZhouTian domain rules', () => {
     )).toBe(true)
   })
 
+  it('keeps the deduction token when fewer than three non-repeating candidates remain', () => {
+    const inventory = createArtifactInventory('qing-feng-jian-xia')
+    const draftState = {
+      ...createUpgradeDraftState(42),
+      flexibleRanks: { 'flex-sharpen': 3, 'flex-circulate': 3 },
+    } as const
+    const current = draftUpgradeChoices(inventory, draftState).choices
+    const deduction = createDeductionState(1)
+
+    expect(canPerformDeduction(deduction, current, inventory, draftState)).toBe(false)
+    expect(() => performDeduction(deduction, current, inventory, draftState)).toThrow('候选不足三张')
+    expect(deduction.remainingCount).toBe(1)
+  })
+
   it('calculateTunaHeal restores 15% of max HP', () => {
     expect(calculateTunaHeal(100)).toBe(15)
     expect(calculateTunaHeal(200)).toBe(30)
