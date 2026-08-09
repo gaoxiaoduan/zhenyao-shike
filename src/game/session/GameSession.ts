@@ -1,4 +1,4 @@
-import type { AscensionRecipe, UpgradeChoice } from '../domain/artifactInventory'
+import type { AscensionRecipe, UpgradeDraftChoice } from '../domain/artifactInventory'
 import type { ZhouTianOption } from '../domain/deductionAndZhouTian'
 import type { InputIntent } from '../domain/inputIntent'
 import type { BaseArtifact, BaseArtifactId } from '../domain/initialArtifactSelection'
@@ -19,6 +19,9 @@ export interface BattleHudSnapshot {
   readonly experienceToNextLevel: number
   readonly elapsedMs: number
   readonly enemyCount: number
+  readonly movementActive: boolean
+  readonly eliteCount: number
+  readonly weakestEliteHealthPercent: number | null
   readonly stageLabel: string
   readonly spellCooldownMs: number
   readonly artifacts: readonly RunArtifactSummary[]
@@ -28,7 +31,7 @@ export type GameSessionEvent =
   | { readonly type: 'initial-artifact-selection-requested'; readonly candidates: readonly BaseArtifact[] }
   | {
       readonly type: 'upgrade-requested'
-      readonly choices: readonly (UpgradeChoice | ZhouTianOption)[]
+      readonly choices: readonly (UpgradeDraftChoice | ZhouTianOption)[]
       readonly deductionCount: number
       readonly isZhouTian?: boolean
     }
@@ -65,4 +68,6 @@ export interface CreateGameSessionOptions {
   readonly reducedMotion: boolean
   readonly compactRadar?: boolean
   readonly runSeed?: number
+  /** Test-harness clock compression. Product callers should leave this unset. */
+  readonly elapsedTimeScale?: number
 }

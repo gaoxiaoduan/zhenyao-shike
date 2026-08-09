@@ -47,7 +47,7 @@ describe('deductionAndZhouTian domain rules', () => {
 
     const result = performDeduction(createDeductionState(1), current, inventory, draftState)
 
-    expect(result.newChoices.length).toBeGreaterThan(0)
+    expect(result.newChoices).toHaveLength(3)
     expect(result.newChoices.every(
       (choice) => !current.some((abandoned) => abandoned.choiceId === choice.choiceId),
     )).toBe(true)

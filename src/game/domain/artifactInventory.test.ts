@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyUpgradeChoice,
   applyAscensionChoice,
+  applyFlexibleUpgradeChoice,
   createArtifactInventory,
   createUpgradeDraftState,
   draftUpgradeChoices,
@@ -43,6 +44,22 @@ describe('artifactInventory domain rules', () => {
     expect(new Set(first.choices.map((choice) => choice.choiceId)).size).toBe(3)
     expect(first.choices.some((choice) => choice.type === 'upgrade')).toBe(true)
     expect(first.choices.some((choice) => choice.type === 'acquire')).toBe(true)
+    expect(first.choices.some((choice) => choice.type === 'flex')).toBe(true)
+  })
+
+  it('applies capped flexible cultivation without adding another artifact', () => {
+    let state = createUpgradeDraftState(7301)
+    const first = applyFlexibleUpgradeChoice(state, 'flex-sharpen')
+    state = first.nextState
+
+    expect(first.damageMultiplierDelta).toBe(0.03)
+    expect(state.flexibleRanks['flex-sharpen']).toBe(1)
+    expect(() => {
+      let capped = state
+      capped = applyFlexibleUpgradeChoice(capped, 'flex-sharpen').nextState
+      capped = applyFlexibleUpgradeChoice(capped, 'flex-sharpen').nextState
+      applyFlexibleUpgradeChoice(capped, 'flex-sharpen')
+    }).toThrow('已达上限')
   })
 
   it('guarantees an owned upgradable artifact after it misses three offers', () => {

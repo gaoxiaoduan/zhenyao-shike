@@ -4,6 +4,7 @@ import groundTextureUrl from '../../assets/game/qingshi-ground.png'
 import { musicStageForRun, type MusicStage, type SoundCue } from '../audio/audioDirector'
 import {
   applyAscensionChoice,
+  applyFlexibleUpgradeChoice,
   applyUpgradeChoice,
   ARTIFACT_DEFINITIONS,
   createArtifactInventory,
@@ -16,7 +17,7 @@ import {
   type ArtifactStats,
   type ArtifactId,
   type AscensionRecipe,
-  type UpgradeChoice,
+  type UpgradeDraftChoice,
   type UpgradeDraftState,
 } from '../domain/artifactInventory'
 import {
@@ -31,6 +32,7 @@ import {
   createEnemyStats,
   getDemonWaveStage,
   getOffscreenSpawnPosition,
+  getWaveSpawnDirective,
   resolveDamage,
   shouldSpawnElite,
   type EnemyRole,
@@ -173,6 +175,7 @@ class QingShiRidgeScene extends Phaser.Scene {
   private readonly emitSessionEvent: (event: GameSessionEvent) => void
   private readonly renderScale: number
   private readonly compactRadar: boolean
+  private readonly elapsedTimeScale: number
   private reducedMotion: boolean
   private graphics!: Phaser.GameObjects.Graphics
   private radarGraphics!: Phaser.GameObjects.Graphics
@@ -191,7 +194,7 @@ class QingShiRidgeScene extends Phaser.Scene {
   private inventory: ArtifactInventory = createArtifactInventory()
   private pendingLevelUps = 0
   private awaitingUpgradeSelection = false
-  private upgradeChoices: readonly UpgradeChoice[] = []
+  private upgradeChoices: readonly UpgradeDraftChoice[] = []
   private upgradeDraftState: UpgradeDraftState
   private awaitingAscensionSelection = false
   private ascensionChoices: readonly AscensionRecipe[] = []
@@ -227,6 +230,7 @@ class QingShiRidgeScene extends Phaser.Scene {
   private arrayRotationRad = 0
 
   private spawnElapsedMs = 0
+  private spawnOrdinal = 0
   private spellCooldownMs = 0
   private shieldRemainingMs = 0
   private hudElapsedMs = HUD_INTERVAL_MS
@@ -241,6 +245,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     viewportHeight: number,
     compactRadar: boolean,
     runSeed: number,
+    elapsedTimeScale: number,
   ) {
     super({ key: 'qing-shi-ridge' })
     this.emitSessionEvent = emitSessionEvent
@@ -249,6 +254,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.viewportWidth = viewportWidth
     this.viewportHeight = viewportHeight
     this.compactRadar = compactRadar
+    this.elapsedTimeScale = Math.max(1, elapsedTimeScale)
     this.upgradeDraftState = createUpgradeDraftState(runSeed)
   }
 
@@ -292,7 +298,7 @@ class QingShiRidgeScene extends Phaser.Scene {
 
     const stepMs = Math.min(deltaMs, 50)
     const previousPhase = this.progress.phase
-    this.progress = advanceRunProgress(this.progress, stepMs)
+    this.progress = advanceRunProgress(this.progress, stepMs * this.elapsedTimeScale)
     this.syncMusicStage()
     this.demonLair = updateDemonLairTrigger(this.demonLair, this.progress.elapsedMs)
     if (previousPhase === 'growth' && this.progress.phase === 'boss') {
@@ -333,11 +339,18 @@ class QingShiRidgeScene extends Phaser.Scene {
 
     const isTeaching = !this.onboardingSkipped && this.progress.elapsedMs < 60_000
     const waveStage = getDemonWaveStage(this.progress.elapsedMs)
-    const spawnIntervalMs = isTeaching ? waveStage.spawnIntervalMs * 1.4 : waveStage.spawnIntervalMs
+    const spawnDirective = getWaveSpawnDirective(this.progress.elapsedMs, this.spawnOrdinal)
+    const densityMultiplier = isTeaching ? 1 : spawnDirective.intervalMultiplier
+    const spawnIntervalMs = waveStage.spawnIntervalMs * densityMultiplier * (isTeaching ? 1.4 : 1)
     const enemyLimit = isTeaching ? Math.min(14, waveStage.activeEnemyTarget) : waveStage.activeEnemyTarget
     if (this.progress.phase === 'growth' && this.spawnElapsedMs >= spawnIntervalMs && this.enemies.length < enemyLimit) {
       this.spawnElapsedMs = 0
-      this.spawnEnemy()
+      const burstCount = isTeaching ? 1 : spawnDirective.burstCount
+      for (let index = 0; index < burstCount && this.enemies.length < enemyLimit; index += 1) {
+        const directive = getWaveSpawnDirective(this.progress.elapsedMs, this.spawnOrdinal)
+        this.spawnEnemy(directive.enemyId)
+        this.spawnOrdinal += 1
+      }
     }
 
     this.updateProjectiles(stepMs)
@@ -429,7 +442,24 @@ class QingShiRidgeScene extends Phaser.Scene {
       return
     }
 
-    this.inventory = applyUpgradeChoice(this.inventory, choice.artifactId)
+    if (choice.type === 'flex') {
+      const result = applyFlexibleUpgradeChoice(this.upgradeDraftState, choice.choiceId)
+      this.upgradeDraftState = result.nextState
+      this.playerDamageMultiplier += result.damageMultiplierDelta
+      this.attackIntervalMultiplier = Math.max(
+        0.5,
+        this.attackIntervalMultiplier + result.attackIntervalMultiplierDelta,
+      )
+      if (result.maxHealthMultiplierDelta > 0) {
+        this.playerMaxHealthMultiplier += result.maxHealthMultiplierDelta
+        const newMax = Math.round(100 * this.playerMaxHealthMultiplier)
+        const bonus = newMax - this.player.maxHealth
+        this.player.maxHealth = newMax
+        this.player.health = Math.min(this.player.maxHealth, this.player.health + bonus)
+      }
+    } else {
+      this.inventory = applyUpgradeChoice(this.inventory, choice.artifactId)
+    }
     this.pendingLevelUps = Math.max(0, this.pendingLevelUps - 1)
     this.awaitingUpgradeSelection = false
     this.upgradeChoices = []
@@ -717,7 +747,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     }
   }
 
-  private spawnEnemy() {
+  private spawnEnemy(commonEnemyId?: QingShiRidgeEnemyId) {
     const cam = this.cameras.main
     const cameraWorld = {
       x: cam.worldView.x,
@@ -736,7 +766,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     const waveStage = getDemonWaveStage(this.progress.elapsedMs)
     const enemyId: QingShiRidgeEnemyId = spawnElite
       ? 'qing-shi-ridge-elite-wolf'
-      : chooseCommonEnemyForWave(waveStage.index, Phaser.Math.RND.frac())
+      : commonEnemyId ?? chooseCommonEnemyForWave(waveStage.index, Phaser.Math.RND.frac())
     if (spawnElite) {
       this.lastEliteSpawnMs = this.progress.elapsedMs
     }
@@ -834,6 +864,9 @@ class QingShiRidgeScene extends Phaser.Scene {
 
       const contactDistance = Phaser.Math.Distance.Between(enemy.x, enemy.y, this.player.x, this.player.y)
       if (behavior.contactEnabled && contactDistance < enemy.radius + 22) {
+        if (enemy.behavior.action === 'charge') {
+          enemy.behavior = { ...enemy.behavior, chargeConnected: true }
+        }
         pressure += 1
       }
     }
@@ -1297,7 +1330,9 @@ class QingShiRidgeScene extends Phaser.Scene {
       this.defeatedElites += 1
     }
     this.emitAudio('enemy-defeated')
-    this.deathBursts.push({ x: enemy.x, y: enemy.y, color: enemy.color, remainingMs: 260 })
+    if (!this.reducedMotion) {
+      this.deathBursts.push({ x: enemy.x, y: enemy.y, color: enemy.color, remainingMs: 260 })
+    }
     this.spirits.push({ x: enemy.x, y: enemy.y, value: enemy.isElite ? 8 : 1 })
   }
 
@@ -1312,7 +1347,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     }
 
     enemy.health = resolveDamage(enemy.health, Math.round(damage * enemy.vulnerableMultiplier))
-    enemy.hitFlashMs = 90
+    enemy.hitFlashMs = this.reducedMotion ? 0 : 90
     if (this.hitAudioCooldownMs === 0) {
       this.emitAudio('ordinary-hit')
       this.hitAudioCooldownMs = 70
@@ -1389,6 +1424,11 @@ class QingShiRidgeScene extends Phaser.Scene {
       stageStatus = `🔥 妖巢暴动 ${Math.ceil(this.demonLair.health)}/${this.demonLair.maxHealth}`
     }
 
+    const elites = this.enemies.filter((enemy) => enemy.isElite)
+    const weakestEliteHealthPercent = elites.length === 0
+      ? null
+      : Math.round(Math.min(...elites.map((enemy) => enemy.health / enemy.maxHealth)) * 100)
+
     this.emitSessionEvent({
       type: 'hud-updated',
       snapshot: {
@@ -1399,6 +1439,9 @@ class QingShiRidgeScene extends Phaser.Scene {
         experienceToNextLevel: this.progress.experienceToNextLevel,
         elapsedMs: this.progress.elapsedMs,
         enemyCount: this.enemies.length,
+        movementActive: this.inputIntent.moveX !== 0 || this.inputIntent.moveY !== 0,
+        eliteCount: elites.length,
+        weakestEliteHealthPercent,
         stageLabel: stageStatus,
         spellCooldownMs: this.spellCooldownMs,
         artifacts: this.inventory.slots.map((slot) => ({
@@ -1499,17 +1542,19 @@ class QingShiRidgeScene extends Phaser.Scene {
       this.graphics.lineStyle(3, 0xfde68a, alpha).strokeCircle(effect.x, effect.y, effect.radius)
     }
 
-    for (const burst of this.deathBursts) {
-      const progress = 1 - burst.remainingMs / 260
-      const alpha = Math.max(0, 1 - progress)
-      for (let index = 0; index < 6; index += 1) {
-        const angle = index * Math.PI / 3
-        const distance = 8 + progress * 28
-        this.graphics.fillStyle(burst.color, alpha).fillCircle(
-          burst.x + Math.cos(angle) * distance,
-          burst.y + Math.sin(angle) * distance,
-          3,
-        )
+    if (!this.reducedMotion) {
+      for (const burst of this.deathBursts) {
+        const progress = 1 - burst.remainingMs / 260
+        const alpha = Math.max(0, 1 - progress)
+        for (let index = 0; index < 6; index += 1) {
+          const angle = index * Math.PI / 3
+          const distance = 8 + progress * 28
+          this.graphics.fillStyle(burst.color, alpha).fillCircle(
+            burst.x + Math.cos(angle) * distance,
+            burst.y + Math.sin(angle) * distance,
+            3,
+          )
+        }
       }
     }
 
@@ -1529,7 +1574,7 @@ class QingShiRidgeScene extends Phaser.Scene {
       enemy.sprite.setPosition(enemy.x, enemy.y)
       if (enemy.hitFlashMs > 0) {
         enemy.sprite.setTint(0xffffff)
-      } else if (enemy.behavior.action === 'recover' && enemy.isElite) {
+      } else if (enemy.behavior.recoveryIsVulnerable && enemy.isElite) {
         enemy.sprite.setTint(0x93c5fd)
       } else {
         enemy.sprite.clearTint()
@@ -1695,6 +1740,7 @@ export function createBattleSession(options: CreateGameSessionOptions) {
     options.viewport.internalHeight,
     options.compactRadar ?? false,
     options.runSeed ?? Date.now(),
+    options.elapsedTimeScale ?? 1,
   )
   const game = new Phaser.Game({
     type: Phaser.AUTO,

@@ -61,8 +61,19 @@ const spellKey = computed(() => displayControlKey(props.keyBindings.castSpell[0]
       <dl class="battle-hud__stats">
         <div><dt>时间</dt><dd>{{ formatElapsedTime(snapshot?.elapsedMs ?? 0) }}</dd></div>
         <div><dt>妖物</dt><dd>{{ snapshot?.enemyCount ?? 0 }}</dd></div>
-        <div><dt>境进</dt><dd>Lv.{{ snapshot?.level ?? 1 }}</dd></div>
+        <div><dt>身法</dt><dd>{{ snapshot?.movementActive ? '移动中' : '驻足' }}</dd></div>
       </dl>
+      <div v-if="snapshot?.eliteCount" class="battle-hud__elite" aria-live="polite">
+        <span><strong>精英威胁 × {{ snapshot.eliteCount }}</strong><small>场内生命条</small></span>
+        <div
+          class="battle-hud__elite-bar"
+          role="progressbar"
+          aria-label="精英妖物生命"
+          :aria-valuenow="snapshot.weakestEliteHealthPercent ?? 0"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        ><i :style="{ width: `${snapshot.weakestEliteHealthPercent ?? 0}%` }" /></div>
+      </div>
       <div class="battle-hud__spell">
         <ArtifactIcon id="protective-spell" label="玄光护身诀" />
         <span>
@@ -192,6 +203,12 @@ const spellKey = computed(() => displayControlKey(props.keyBindings.castSpell[0]
   font-family: ui-monospace, monospace;
   font-size: 0.7rem;
 }
+
+.battle-hud__elite { margin: 0.2rem 0 0.8rem; color: #fde68a; font-size: 0.65rem; }
+.battle-hud__elite span { display: flex; justify-content: space-between; gap: 0.5rem; }
+.battle-hud__elite small { color: rgb(253 230 138 / 0.65); }
+.battle-hud__elite-bar { height: 0.3rem; margin-top: 0.3rem; overflow: hidden; background: rgb(0 0 0 / 0.55); }
+.battle-hud__elite-bar i { display: block; height: 100%; background: linear-gradient(90deg, #dc6c51, #f59e0b); transition: width 120ms linear; }
 
 .battle-hud__spell {
   border-top: 1px solid rgb(255 255 255 / 0.08);

@@ -6,11 +6,14 @@ export interface EnemyBehaviorState {
   readonly action: EnemyAction
   readonly actionRemainingMs: number
   readonly rangedCooldownMs: number
+  readonly chargeConnected: boolean
+  readonly recoveryIsVulnerable: boolean
 }
 
 export interface EnemyBehaviorInput {
   readonly deltaMs: number
   readonly distanceToPlayer: number
+  readonly chargeConnected?: boolean
 }
 
 export interface EnemyBehaviorResult {
@@ -27,6 +30,8 @@ export function createEnemyBehaviorState(): EnemyBehaviorState {
     action: 'approach',
     actionRemainingMs: 0,
     rangedCooldownMs: 1_200,
+    chargeConnected: false,
+    recoveryIsVulnerable: false,
   }
 }
 
@@ -55,7 +60,13 @@ export function advanceEnemyBehavior(
     const recoveryMs = role === 'elite-pouncer' ? 900 : 700
 
     if (state.action === 'approach' && input.distanceToPlayer <= triggerDistance) {
-      nextState = { ...nextState, action: 'windup', actionRemainingMs: windupMs }
+      nextState = {
+        ...nextState,
+        action: 'windup',
+        actionRemainingMs: windupMs,
+        chargeConnected: false,
+        recoveryIsVulnerable: false,
+      }
     } else if (state.action !== 'approach') {
       const remaining = state.actionRemainingMs - deltaMs
       if (remaining > 0) {
@@ -63,9 +74,22 @@ export function advanceEnemyBehavior(
       } else if (state.action === 'windup') {
         nextState = { ...nextState, action: 'charge', actionRemainingMs: chargeMs }
       } else if (state.action === 'charge') {
-        nextState = { ...nextState, action: 'recover', actionRemainingMs: recoveryMs }
+        const chargeConnected = input.chargeConnected ?? state.chargeConnected
+        nextState = {
+          ...nextState,
+          action: 'recover',
+          actionRemainingMs: recoveryMs,
+          chargeConnected,
+          recoveryIsVulnerable: role === 'elite-pouncer' && !chargeConnected,
+        }
       } else {
-        nextState = { ...nextState, action: 'approach', actionRemainingMs: 0 }
+        nextState = {
+          ...nextState,
+          action: 'approach',
+          actionRemainingMs: 0,
+          chargeConnected: false,
+          recoveryIsVulnerable: false,
+        }
       }
     }
   }
@@ -84,6 +108,6 @@ export function advanceEnemyBehavior(
     contactEnabled: nextState.action !== 'windup' && nextState.action !== 'recover',
     telegraph: nextState.action === 'windup',
     shouldFireProjectile,
-    vulnerableMultiplier: role === 'elite-pouncer' && nextState.action === 'recover' ? 1.65 : 1,
+    vulnerableMultiplier: role === 'elite-pouncer' && nextState.recoveryIsVulnerable ? 1.65 : 1,
   }
 }

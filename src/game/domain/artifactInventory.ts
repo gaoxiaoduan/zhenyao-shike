@@ -157,6 +157,20 @@ export interface UpgradeChoice {
   readonly attackColor: number
 }
 
+export type FlexibleUpgradeChoiceId = 'flex-sharpen' | 'flex-circulate' | 'flex-fortify'
+
+export interface FlexibleUpgradeChoice {
+  readonly choiceId: FlexibleUpgradeChoiceId
+  readonly type: 'flex'
+  readonly name: string
+  readonly description: string
+  readonly currentRank: number
+  readonly targetRank: number
+  readonly statsDescription: string
+}
+
+export type UpgradeDraftChoice = UpgradeChoice | FlexibleUpgradeChoice
+
 export interface AscensionRecipe {
   readonly choiceId: string
   readonly sourceIds: readonly [BaseArtifactId, BaseArtifactId]
@@ -346,7 +360,7 @@ export function generateUpgradeChoices(
 export interface UpgradeDraftState {
   readonly seed: number
   readonly missedOwnedUpgrades: Readonly<Partial<Record<BaseArtifactId, number>>>
-  readonly lastChoiceIds: readonly string[]
+  readonly flexibleRanks: Readonly<Partial<Record<FlexibleUpgradeChoiceId, number>>>
 }
 
 export interface UpgradeDraftOptions {
@@ -358,24 +372,58 @@ export function createUpgradeDraftState(seed: number): UpgradeDraftState {
   return {
     seed: normalizeSeed(seed),
     missedOwnedUpgrades: {},
-    lastChoiceIds: [],
+    flexibleRanks: {},
   }
+}
+
+function generateFlexibleUpgradeChoices(state: UpgradeDraftState): readonly FlexibleUpgradeChoice[] {
+  const definitions: readonly Omit<FlexibleUpgradeChoice, 'currentRank' | 'targetRank'>[] = [
+    {
+      choiceId: 'flex-sharpen',
+      type: 'flex',
+      name: '临战机缘 · 砺锋',
+      description: '不改变法器槽位，小幅淬炼本局所有法器的锋锐。',
+      statsDescription: '全法器伤害 +3% · 最多参悟 3 次',
+    },
+    {
+      choiceId: 'flex-circulate',
+      type: 'flex',
+      name: '临战机缘 · 周流',
+      description: '不改变法器槽位，小幅加快本局所有法器的灵气周转。',
+      statsDescription: '全法器攻击间隔 -3% · 最多参悟 3 次',
+    },
+    {
+      choiceId: 'flex-fortify',
+      type: 'flex',
+      name: '临战机缘 · 固元',
+      description: '不改变法器槽位，小幅强健气血并回复等量生命。',
+      statsDescription: '最大生命 +4% 并回复等量生命 · 最多参悟 3 次',
+    },
+  ]
+
+  return definitions.flatMap((definition) => {
+    const currentRank = state.flexibleRanks[definition.choiceId] ?? 0
+    return currentRank >= 3
+      ? []
+      : [{ ...definition, currentRank, targetRank: currentRank + 1 }]
+  })
 }
 
 export function draftUpgradeChoices(
   inventory: ArtifactInventory,
   state: UpgradeDraftState,
   options: UpgradeDraftOptions = {},
-): { readonly choices: readonly UpgradeChoice[]; readonly nextState: UpgradeDraftState } {
+): { readonly choices: readonly UpgradeDraftChoice[]; readonly nextState: UpgradeDraftState } {
   const count = Math.max(0, Math.floor(options.count ?? 3))
-  const allChoices = [...generateUpgradeChoices(inventory, Number.POSITIVE_INFINITY)]
+  const artifactChoices = [...generateUpgradeChoices(inventory, Number.POSITIVE_INFINITY)]
+  const allChoices: UpgradeDraftChoice[] = [...artifactChoices, ...generateFlexibleUpgradeChoices(state)]
   const excludedIds = new Set(options.excludedChoiceIds ?? [])
   const preferredPool = allChoices.filter((choice) => !excludedIds.has(choice.choiceId))
   const pool = preferredPool.length > 0 ? preferredPool : allChoices
-  const selected: UpgradeChoice[] = []
+  const selected: UpgradeDraftChoice[] = []
   let seed = normalizeSeed(state.seed)
 
-  function takeChoice(candidates: readonly UpgradeChoice[]) {
+  function takeChoice(candidates: readonly UpgradeDraftChoice[]) {
     const remaining = candidates.filter(
       (choice) => pool.some((candidate) => candidate.choiceId === choice.choiceId)
         && !selected.some((picked) => picked.choiceId === choice.choiceId),
@@ -385,17 +433,17 @@ export function draftUpgradeChoices(
     }
     const random = nextSeededFloat(seed)
     seed = random.seed
-    const totalWeight = remaining.reduce((sum, choice) => sum + (choice.type === 'upgrade' ? 1.25 : 1), 0)
+    const totalWeight = remaining.reduce((sum, choice) => sum + (choice.type === 'upgrade' ? 1.25 : choice.type === 'flex' ? 0.9 : 1), 0)
     let cursor = random.value * totalWeight
     const picked = remaining.find((choice) => {
-      cursor -= choice.type === 'upgrade' ? 1.25 : 1
+      cursor -= choice.type === 'upgrade' ? 1.25 : choice.type === 'flex' ? 0.9 : 1
       return cursor <= 0
     }) ?? remaining[remaining.length - 1]!
     selected.push(picked)
   }
 
   const pityChoices = pool
-    .filter((choice) => choice.type === 'upgrade')
+    .filter((choice): choice is UpgradeChoice => choice.type === 'upgrade')
     .filter((choice) => (state.missedOwnedUpgrades[choice.artifactId] ?? 0) >= 3)
     .sort((left, right) => left.artifactId.localeCompare(right.artifactId))
   if (pityChoices[0]) {
@@ -406,16 +454,19 @@ export function draftUpgradeChoices(
     takeChoice(pool.filter((choice) => choice.type === 'upgrade'))
   }
   takeChoice(pool.filter((choice) => choice.type === 'acquire'))
+  takeChoice(pool.filter((choice) => choice.type === 'flex'))
   while (selected.length < Math.min(count, pool.length)) {
     takeChoice(pool)
   }
 
   const nextMisses: Partial<Record<BaseArtifactId, number>> = {}
-  for (const choice of allChoices) {
+  for (const choice of artifactChoices) {
     if (choice.type !== 'upgrade') {
       continue
     }
-    nextMisses[choice.artifactId] = selected.some((picked) => picked.artifactId === choice.artifactId)
+    nextMisses[choice.artifactId] = selected.some(
+      (picked) => picked.type !== 'flex' && picked.artifactId === choice.artifactId,
+    )
       ? 0
       : (state.missedOwnedUpgrades[choice.artifactId] ?? 0) + 1
   }
@@ -425,8 +476,33 @@ export function draftUpgradeChoices(
     nextState: {
       seed,
       missedOwnedUpgrades: nextMisses,
-      lastChoiceIds: selected.map((choice) => choice.choiceId),
+      flexibleRanks: state.flexibleRanks,
     },
+  }
+}
+
+export function applyFlexibleUpgradeChoice(
+  state: UpgradeDraftState,
+  choiceId: FlexibleUpgradeChoiceId,
+): {
+  readonly nextState: UpgradeDraftState
+  readonly damageMultiplierDelta: number
+  readonly attackIntervalMultiplierDelta: number
+  readonly maxHealthMultiplierDelta: number
+} {
+  const currentRank = state.flexibleRanks[choiceId] ?? 0
+  if (currentRank >= 3) {
+    throw new Error('该临战机缘已达上限。')
+  }
+
+  return {
+    nextState: {
+      ...state,
+      flexibleRanks: { ...state.flexibleRanks, [choiceId]: currentRank + 1 },
+    },
+    damageMultiplierDelta: choiceId === 'flex-sharpen' ? 0.03 : 0,
+    attackIntervalMultiplierDelta: choiceId === 'flex-circulate' ? -0.03 : 0,
+    maxHealthMultiplierDelta: choiceId === 'flex-fortify' ? 0.04 : 0,
   }
 }
 

@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { onMounted, useTemplateRef } from 'vue'
-import type { AscensionRecipe, UpgradeChoice } from '../game/domain/artifactInventory'
+import type { AscensionRecipe, FlexibleUpgradeChoice, UpgradeChoice, UpgradeDraftChoice } from '../game/domain/artifactInventory'
 import type { ZhouTianOption } from '../game/domain/deductionAndZhouTian'
 import ArtifactIcon from './game/ArtifactIcon.vue'
 
 const props = defineProps<{
-  choices: readonly (UpgradeChoice | ZhouTianOption)[]
+  choices: readonly (UpgradeDraftChoice | ZhouTianOption)[]
   ascensions: readonly AscensionRecipe[]
   deductionCount: number
   isZhouTian?: boolean
@@ -19,8 +19,12 @@ const emit = defineEmits<{
   tuna: []
 }>()
 
-function isUpgradeChoice(item: UpgradeChoice | ZhouTianOption): item is UpgradeChoice {
-  return 'type' in item
+function isUpgradeChoice(item: UpgradeDraftChoice | ZhouTianOption): item is UpgradeChoice {
+  return 'artifactId' in item
+}
+
+function isFlexibleChoice(item: UpgradeDraftChoice | ZhouTianOption): item is FlexibleUpgradeChoice {
+  return 'type' in item && item.type === 'flex'
 }
 
 const dialog = useTemplateRef<HTMLElement>('dialog')
@@ -28,12 +32,21 @@ const dialog = useTemplateRef<HTMLElement>('dialog')
 function handleChoiceHotkey(event: KeyboardEvent) {
   const slot = Number(event.key) - 1
   const choice = props.choices[slot]
-  if (!choice || slot < 0 || slot > 2) {
+  if (slot < 0 || slot > 2) {
     return
   }
 
-  event.preventDefault()
-  emit('select', choice.choiceId)
+  if (choice) {
+    event.preventDefault()
+    emit('select', choice.choiceId)
+    return
+  }
+
+  const ascension = props.choices.length === 0 ? props.ascensions[slot] : undefined
+  if (ascension) {
+    event.preventDefault()
+    emit('selectAscension', ascension.choiceId)
+  }
 }
 
 onMounted(() => dialog.value?.focus())
@@ -75,7 +88,9 @@ onMounted(() => dialog.value?.focus())
           <div>
             <div class="flex items-center gap-3">
               <ArtifactIcon v-if="isUpgradeChoice(choice)" :id="choice.artifactId" :label="choice.name" />
-              <span v-else class="grid size-11 shrink-0 place-items-center rounded border border-cyan-300/30 bg-cyan-950/45 text-xl text-cyan-100">周</span>
+              <span v-else class="grid size-11 shrink-0 place-items-center rounded border border-cyan-300/30 bg-cyan-950/45 text-xl text-cyan-100">
+                {{ isFlexibleChoice(choice) ? '灵' : '周' }}
+              </span>
               <span class="min-w-0 flex-1 text-lg font-bold text-amber-100 group-hover:text-amber-200">{{ choice.name }}</span>
               <span
                 v-if="isUpgradeChoice(choice)"
@@ -87,6 +102,12 @@ onMounted(() => dialog.value?.focus())
                 "
               >
                 {{ choice.type === 'acquire' ? '新获得' : `Lv.${choice.currentLevel} ➔ Lv.${choice.targetLevel}` }}
+              </span>
+              <span
+                v-else-if="isFlexibleChoice(choice)"
+                class="rounded border border-emerald-400/40 bg-emerald-950/60 px-2 py-0.5 text-xs font-medium tracking-wider text-emerald-200"
+              >
+                机缘 {{ choice.currentRank }} ➔ {{ choice.targetRank }}
               </span>
               <span
                 v-else
@@ -156,7 +177,7 @@ onMounted(() => dialog.value?.focus())
         </div>
         <div class="mt-4 grid gap-3 sm:grid-cols-3">
           <button
-            v-for="ascension in ascensions"
+            v-for="(ascension, index) in ascensions"
             :key="ascension.choiceId"
             class="rounded-md border border-fuchsia-200/30 bg-stone-950/35 p-4 text-left transition hover:-translate-y-0.5 hover:border-fuchsia-200/75 hover:bg-fuchsia-950/30 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-fuchsia-200"
             type="button"
@@ -168,6 +189,12 @@ onMounted(() => dialog.value?.focus())
                 <small class="block text-xs tracking-wide text-stone-400">{{ ascension.sourceNames.join(' + ') }}</small>
                 <strong class="mt-1 block text-lg text-fuchsia-100">{{ ascension.name }}</strong>
               </span>
+              <kbd
+                v-if="choices.length === 0 && index < 3"
+                class="ml-auto rounded border border-fuchsia-100/35 bg-stone-950/55 px-2 py-1 text-xs text-fuchsia-100"
+              >
+                按 {{ index + 1 }}
+              </kbd>
             </span>
             <span class="mt-2 block text-xs leading-5 text-stone-300">{{ ascension.description }}</span>
             <span class="mt-3 block text-xs font-semibold text-fuchsia-200/90">

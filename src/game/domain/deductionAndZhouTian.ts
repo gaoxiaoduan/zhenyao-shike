@@ -1,4 +1,4 @@
-import type { ArtifactInventory, UpgradeChoice, UpgradeDraftState } from './artifactInventory'
+import type { ArtifactInventory, UpgradeDraftChoice, UpgradeDraftState } from './artifactInventory'
 import { createUpgradeDraftState, draftUpgradeChoices } from './artifactInventory'
 
 export interface DeductionState {
@@ -17,12 +17,12 @@ export function canPerformDeduction(state: DeductionState): boolean {
 
 export function performDeduction(
   state: DeductionState,
-  currentChoices: readonly UpgradeChoice[],
+  currentChoices: readonly UpgradeDraftChoice[],
   inventory: ArtifactInventory,
   draftState: UpgradeDraftState = createUpgradeDraftState(7301),
 ): {
   readonly nextState: DeductionState
-  readonly newChoices: readonly UpgradeChoice[]
+  readonly newChoices: readonly UpgradeDraftChoice[]
   readonly nextDraftState: UpgradeDraftState
 } {
   if (!canPerformDeduction(state)) {

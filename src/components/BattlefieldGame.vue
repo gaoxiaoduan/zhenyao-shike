@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, shallowRef, useTemplateRef, watch } from 'vue'
-import type { AscensionRecipe, UpgradeChoice } from '../game/domain/artifactInventory'
+import type { AscensionRecipe, UpgradeDraftChoice } from '../game/domain/artifactInventory'
 import type { ZhouTianOption } from '../game/domain/deductionAndZhouTian'
 import { createInputIntent, mergeMovementIntent, type InputIntent } from '../game/domain/inputIntent'
 import type { BaseArtifact } from '../game/domain/initialArtifactSelection'
@@ -53,7 +53,7 @@ const viewport = shallowRef(computeBattleViewport({
   desktop: desktopMedia.matches,
 }))
 const initialArtifactCandidates = shallowRef<readonly BaseArtifact[]>([])
-const upgradeChoices = shallowRef<readonly (UpgradeChoice | ZhouTianOption)[]>([])
+const upgradeChoices = shallowRef<readonly (UpgradeDraftChoice | ZhouTianOption)[]>([])
 const ascensionChoices = shallowRef<readonly AscensionRecipe[]>([])
 const deductionCount = shallowRef(1)
 const isZhouTian = shallowRef(false)
@@ -387,6 +387,9 @@ onMounted(() => {
     reducedMotion: props.settings.reducedMotion,
     compactRadar: !desktopMedia.matches,
     runSeed: Date.now(),
+    elapsedTimeScale: import.meta.env.DEV && new URLSearchParams(window.location.search).get('e2e-time') === '60'
+      ? 60
+      : 1,
   })
   window.addEventListener('resize', syncViewport)
   window.addEventListener('blur', clearKeyboardIntent)
@@ -419,7 +422,7 @@ onUnmounted(() => {
         ref="battleMount"
         class="battlefield__canvas absolute inset-0"
         aria-label="青石岭战场"
-        aria-description="战场雷达显示主角位置、妖物密度、精英妖物、妖王与灵蕴"
+        aria-description="战场雷达显示主角位置、妖物密度、精英妖物场内生命条、妖王与灵蕴"
         data-testid="battlefield-canvas"
       />
     </div>

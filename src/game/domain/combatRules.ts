@@ -91,6 +91,34 @@ export function chooseCommonEnemyForWave(
       : 'qing-shi-ridge-mist-moth'
 }
 
+const WAVE_COMPOSITIONS: Readonly<Record<DemonWaveStage['index'], readonly QingShiRidgeEnemyId[]>> = {
+  0: ['qing-shi-ridge-boar-demon', 'qing-shi-ridge-wood-wolf', 'qing-shi-ridge-wood-wolf'],
+  1: ['qing-shi-ridge-boar-demon', 'qing-shi-ridge-wood-wolf', 'qing-shi-ridge-mist-moth', 'qing-shi-ridge-wood-wolf'],
+  2: ['qing-shi-ridge-boar-demon', 'qing-shi-ridge-boar-demon', 'qing-shi-ridge-wood-wolf', 'qing-shi-ridge-mist-moth', 'qing-shi-ridge-wood-wolf'],
+  3: ['qing-shi-ridge-mist-moth', 'qing-shi-ridge-wood-wolf', 'qing-shi-ridge-boar-demon', 'qing-shi-ridge-wood-wolf', 'qing-shi-ridge-mist-moth'],
+}
+
+export interface WaveSpawnDirective {
+  readonly enemyId: QingShiRidgeEnemyId
+  readonly intervalMultiplier: number
+  readonly burstCount: 1 | 2
+}
+
+export function getWaveSpawnDirective(elapsedMs: number, spawnOrdinal: number): WaveSpawnDirective {
+  const stage = getDemonWaveStage(elapsedMs)
+  const composition = WAVE_COMPOSITIONS[stage.index]
+  const safeOrdinal = Math.max(0, Math.floor(spawnOrdinal))
+  const stageElapsedMs = Math.max(0, elapsedMs - stage.startsAtMs)
+  const pulseOffsetMs = stageElapsedMs % 45_000
+  const densityPulse = stage.index > 0 && pulseOffsetMs >= 28_000 && pulseOffsetMs < 38_000
+
+  return {
+    enemyId: composition[safeOrdinal % composition.length]!,
+    intervalMultiplier: densityPulse ? 0.58 : 1,
+    burstCount: densityPulse ? 2 : 1,
+  }
+}
+
 export interface EliteSpawnInput {
   readonly elapsedMs: number
   readonly lastEliteSpawnMs: number | null

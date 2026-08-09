@@ -4,6 +4,7 @@ import {
   chooseCommonEnemyForWave,
   createEnemyStats,
   getDemonWaveStage,
+  getWaveSpawnDirective,
   getOffscreenSpawnPosition,
   shouldSpawnElite,
   resolveDamage,
@@ -39,6 +40,17 @@ describe('青石岭基础战斗规则', () => {
     expect(shouldSpawnElite({ elapsedMs: 120_000, lastEliteSpawnMs: null, activeEliteCount: 0 })).toBe(true)
     expect(shouldSpawnElite({ elapsedMs: 500_000, lastEliteSpawnMs: 410_000, activeEliteCount: 1 })).toBe(true)
     expect(shouldSpawnElite({ elapsedMs: 500_000, lastEliteSpawnMs: 410_000, activeEliteCount: 2 })).toBe(false)
+  })
+
+  it('以可复现的职责组合编排妖潮，并在短窗口制造密度峰值', () => {
+    expect([0, 1, 2, 3].map((ordinal) => getWaveSpawnDirective(160_000, ordinal).enemyId)).toEqual([
+      'qing-shi-ridge-boar-demon',
+      'qing-shi-ridge-wood-wolf',
+      'qing-shi-ridge-mist-moth',
+      'qing-shi-ridge-wood-wolf',
+    ])
+    expect(getWaveSpawnDirective(160_000, 0)).toMatchObject({ intervalMultiplier: 1, burstCount: 1 })
+    expect(getWaveSpawnDirective(180_000, 0)).toMatchObject({ intervalMultiplier: 0.58, burstCount: 2 })
   })
 
   it('将接触到主角的妖物数量转化为确定的生命损失', () => {

@@ -35,11 +35,29 @@ describe('妖物职责行为', () => {
     const vulnerable = advanceEnemyBehavior('elite-pouncer', pounce.nextState, {
       deltaMs: 520,
       distanceToPlayer: 320,
+      chargeConnected: false,
     })
 
     expect(warning.nextState.actionRemainingMs).toBe(800)
     expect(pounce.nextState.action).toBe('charge')
     expect(vulnerable.nextState.action).toBe('recover')
     expect(vulnerable.vulnerableMultiplier).toBe(1.65)
+  })
+
+  it('精英扑袭命中后只作普通收招，不进入易伤窗口', () => {
+    const charging = {
+      ...createEnemyBehaviorState(),
+      action: 'charge' as const,
+      actionRemainingMs: 20,
+    }
+    const recovery = advanceEnemyBehavior('elite-pouncer', charging, {
+      deltaMs: 20,
+      distanceToPlayer: 30,
+      chargeConnected: true,
+    })
+
+    expect(recovery.nextState.action).toBe('recover')
+    expect(recovery.nextState.recoveryIsVulnerable).toBe(false)
+    expect(recovery.vulnerableMultiplier).toBe(1)
   })
 })
