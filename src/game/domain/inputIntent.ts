@@ -1,8 +1,6 @@
 export interface InputIntent {
   readonly moveX: number
   readonly moveY: number
-  readonly castSpell: boolean
-  readonly pauseRequested: boolean
 }
 
 export interface MovementKeys {
@@ -21,8 +19,6 @@ export function createInputIntent(partial: Partial<InputIntent> = {}): InputInte
   return {
     moveX: moveX * scale,
     moveY: moveY * scale,
-    castSpell: partial.castSpell ?? false,
-    pauseRequested: partial.pauseRequested ?? false,
   }
 }
 

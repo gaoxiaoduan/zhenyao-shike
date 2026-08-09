@@ -13,6 +13,7 @@ function createRuntime(): BattleRuntime {
     tunaHeal: vi.fn(),
     skipOnboarding: vi.fn(),
     setInputIntent: vi.fn(),
+    castSpell: vi.fn(),
     resize: vi.fn(),
     setReducedMotion: vi.fn(),
     setPaused: vi.fn(),
@@ -48,11 +49,23 @@ describe('历练会话', () => {
   it('将已归一化的跨平台输入转交给战场运行时', () => {
     const runtime = createRuntime()
     const session = createGameSessionController(runtime)
-    const intent = createInputIntent({ moveX: 1, castSpell: true })
+    const intent = createInputIntent({ moveX: 1 })
 
     session.setInputIntent(intent)
 
     expect(runtime.setInputIntent).toHaveBeenCalledWith(intent)
+  })
+
+  it('把术法作为独立命令转交，不覆盖持续移动意图', () => {
+    const runtime = createRuntime()
+    const session = createGameSessionController(runtime)
+    const movement = createInputIntent({ moveX: 1 })
+
+    session.setInputIntent(movement)
+    session.castSpell()
+
+    expect(runtime.setInputIntent).toHaveBeenCalledExactlyOnceWith(movement)
+    expect(runtime.castSpell).toHaveBeenCalledOnce()
   })
 
   it('将首次法器选择转交给尚未启动的战场', () => {

@@ -15,6 +15,9 @@ export type SoundCue =
   | 'sky-thunder-cast'
   | 'ordinary-hit'
   | 'enemy-defeated'
+  | 'boar-charge'
+  | 'mist-shot'
+  | 'elite-warning'
   | 'spirit-collected'
   | 'player-hurt'
   | 'player-critical'
@@ -58,6 +61,9 @@ const CUE_THROTTLE_MS: Partial<Record<SoundCue, number>> = {
   'sword-array-cast': 150,
   'light-wing-cast': 110,
   'sky-thunder-cast': 180,
+  'boar-charge': 220,
+  'mist-shot': 180,
+  'elite-warning': 500,
 }
 
 const HAPTIC_CUES: ReadonlySet<SoundCue> = new Set([
@@ -78,6 +84,7 @@ const HIGH_PRIORITY_CUES: ReadonlySet<SoundCue> = new Set([
   'boss-howl',
   'boss-enraged',
   'boss-defeated',
+  'elite-warning',
 ])
 
 export function soundCuePriority(cue: SoundCue): 'high' | 'normal' {

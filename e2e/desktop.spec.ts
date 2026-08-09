@@ -22,6 +22,29 @@ test('boots the real battlefield on a 1280 by 720 desktop', async ({ page }) => 
   await expect(page.getByRole('dialog', { name: '选择初始法器' })).toBeVisible()
 })
 
+test('selects cards with number keys and exposes the full-world battle radar', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto('/')
+  await page.getByRole('button', { name: '开始青石岭历练' }).click()
+
+  const battlefield = page.getByTestId('battlefield-canvas')
+  await expect(battlefield).toHaveAttribute(
+    'aria-description',
+    '战场雷达显示主角位置、妖物密度、精英妖物、妖王与灵蕴',
+  )
+  await expect(page.getByRole('dialog', { name: '选择初始法器' })).toBeVisible()
+  await page.keyboard.press('2')
+
+  await expect(page.getByRole('dialog', { name: '选择初始法器' })).toBeHidden()
+  await expect(page.getByLabel('战斗信息')).toContainText('雷篆符册')
+
+  await page.keyboard.down('w')
+  await page.keyboard.press('Space')
+  await page.waitForTimeout(250)
+  await page.keyboard.up('w')
+  await expect(battlefield).toBeVisible()
+})
+
 test('uses the 21:9 stage and information wings on ultrawide desktop', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 720 })
   await page.goto('/')

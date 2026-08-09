@@ -3,6 +3,8 @@ import {
   applyUpgradeChoice,
   applyAscensionChoice,
   createArtifactInventory,
+  createUpgradeDraftState,
+  draftUpgradeChoices,
   getAvailableAscensionChoices,
   generateUpgradeChoices,
   getArtifactLevel,
@@ -28,6 +30,35 @@ describe('artifactInventory domain rules', () => {
     // qing-feng-jian-xia upgrade (Lv.1 -> Lv.2) + 2 acquire choices
     expect(choices.some((c) => c.artifactId === 'qing-feng-jian-xia' && c.type === 'upgrade')).toBe(true)
     expect(choices.filter((c) => c.type === 'acquire')).toHaveLength(2)
+  })
+
+  it('uses a reproducible seed while mixing held upgrades with new artifacts', () => {
+    const inventory = createArtifactInventory('qing-feng-jian-xia')
+    const first = draftUpgradeChoices(inventory, createUpgradeDraftState(7301))
+    const repeated = draftUpgradeChoices(inventory, createUpgradeDraftState(7301))
+
+    expect(first.choices.map((choice) => choice.choiceId)).toEqual(
+      repeated.choices.map((choice) => choice.choiceId),
+    )
+    expect(new Set(first.choices.map((choice) => choice.choiceId)).size).toBe(3)
+    expect(first.choices.some((choice) => choice.type === 'upgrade')).toBe(true)
+    expect(first.choices.some((choice) => choice.type === 'acquire')).toBe(true)
+  })
+
+  it('guarantees an owned upgradable artifact after it misses three offers', () => {
+    const inventory = createArtifactInventory('qing-feng-jian-xia')
+    const state = {
+      ...createUpgradeDraftState(9),
+      missedOwnedUpgrades: { 'qing-feng-jian-xia': 3 },
+    }
+
+    const result = draftUpgradeChoices(inventory, state)
+
+    expect(result.choices[0]).toMatchObject({
+      artifactId: 'qing-feng-jian-xia',
+      type: 'upgrade',
+    })
+    expect(result.nextState.missedOwnedUpgrades['qing-feng-jian-xia']).toBe(0)
   })
 
   it('restricts upgrade candidates to owned artifacts when 4 slots are filled', () => {

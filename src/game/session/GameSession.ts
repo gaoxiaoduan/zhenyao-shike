@@ -51,6 +51,7 @@ export interface GameSession {
   tunaHeal(): void
   skipOnboarding(): void
   setInputIntent(intent: InputIntent): void
+  castSpell(): void
   resize(viewport: BattleViewport): void
   setReducedMotion(reducedMotion: boolean): void
   dispose(): void
@@ -62,4 +63,6 @@ export interface CreateGameSessionOptions {
   readonly viewport: BattleViewport
   readonly renderScale: number
   readonly reducedMotion: boolean
+  readonly compactRadar?: boolean
+  readonly runSeed?: number
 }

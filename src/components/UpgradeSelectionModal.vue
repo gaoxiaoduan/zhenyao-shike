@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { onMounted, useTemplateRef } from 'vue'
 import type { AscensionRecipe, UpgradeChoice } from '../game/domain/artifactInventory'
 import type { ZhouTianOption } from '../game/domain/deductionAndZhouTian'
 import ArtifactIcon from './game/ArtifactIcon.vue'
 
-defineProps<{
+const props = defineProps<{
   choices: readonly (UpgradeChoice | ZhouTianOption)[]
   ascensions: readonly AscensionRecipe[]
   deductionCount: number
@@ -21,14 +22,32 @@ const emit = defineEmits<{
 function isUpgradeChoice(item: UpgradeChoice | ZhouTianOption): item is UpgradeChoice {
   return 'type' in item
 }
+
+const dialog = useTemplateRef<HTMLElement>('dialog')
+
+function handleChoiceHotkey(event: KeyboardEvent) {
+  const slot = Number(event.key) - 1
+  const choice = props.choices[slot]
+  if (!choice || slot < 0 || slot > 2) {
+    return
+  }
+
+  event.preventDefault()
+  emit('select', choice.choiceId)
+}
+
+onMounted(() => dialog.value?.focus())
 </script>
 
 <template>
   <div
+    ref="dialog"
     class="upgrade-selection absolute inset-0 z-50 grid place-items-center bg-stone-950/85 p-5 backdrop-blur-md"
     role="dialog"
     aria-modal="true"
     aria-label="法器突破与构筑升级"
+    tabindex="-1"
+    @keydown="handleChoiceHotkey"
   >
     <div class="max-h-[calc(100svh-2.5rem)] w-full max-w-4xl overflow-y-auto rounded-lg border border-amber-100/35 bg-[#18231e] p-5 shadow-2xl sm:p-8">
       <p class="text-center text-sm tracking-[0.35em] text-amber-200/80">
@@ -75,6 +94,9 @@ function isUpgradeChoice(item: UpgradeChoice | ZhouTianOption): item is UpgradeC
               >
                 {{ choice.count }}/{{ choice.maxCount }}
               </span>
+              <kbd class="rounded border border-amber-100/35 bg-stone-950/55 px-2 py-1 text-xs text-amber-100">
+                按 {{ choices.indexOf(choice) + 1 }}
+              </kbd>
             </div>
 
             <p class="mt-3 text-xs leading-5 text-stone-300">

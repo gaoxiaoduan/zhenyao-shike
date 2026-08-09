@@ -49,6 +49,12 @@ const EFFECT_TONES: Record<SoundCue, readonly ToneSpec[]> = {
   ],
   'ordinary-hit': [{ frequency: 150, endFrequency: 92, duration: 0.07, gain: 0.12, wave: 'square' }],
   'enemy-defeated': [{ frequency: 240, endFrequency: 120, duration: 0.13, gain: 0.11, wave: 'triangle' }],
+  'boar-charge': [{ frequency: 130, endFrequency: 76, duration: 0.28, gain: 0.16, wave: 'sawtooth' }],
+  'mist-shot': [{ frequency: 420, endFrequency: 210, duration: 0.24, gain: 0.1, wave: 'sine' }],
+  'elite-warning': [
+    { frequency: 220, endFrequency: 440, duration: 0.34, gain: 0.18, wave: 'square' },
+    { frequency: 110, endFrequency: 82, duration: 0.42, gain: 0.15, wave: 'sawtooth' },
+  ],
   'spirit-collected': [{ frequency: 660, endFrequency: 880, duration: 0.09, gain: 0.08, wave: 'sine' }],
   'player-hurt': [{ frequency: 120, endFrequency: 58, duration: 0.24, gain: 0.24, wave: 'sawtooth' }],
   'player-critical': [

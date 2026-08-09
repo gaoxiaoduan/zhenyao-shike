@@ -16,12 +16,10 @@ describe('玩家意图', () => {
     expect(intent.moveY).toBeLessThan(0)
   })
 
-  it('保留术法和暂停这两个跨平台意图', () => {
-    const intent = createInputIntent({ moveX: 4, moveY: -3, castSpell: true, pauseRequested: true })
+  it('将任意方向输入归一化为稳定的持续移动意图', () => {
+    const intent = createInputIntent({ moveX: 4, moveY: -3 })
 
     expect(intent.moveX).toBeCloseTo(0.8)
     expect(intent.moveY).toBeCloseTo(-0.6)
-    expect(intent.castSpell).toBe(true)
-    expect(intent.pauseRequested).toBe(true)
   })
 })

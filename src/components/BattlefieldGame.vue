@@ -60,6 +60,7 @@ const isZhouTian = shallowRef(false)
 const onboardingProgress = shallowRef<OnboardingProgress>(createOnboardingProgress())
 const hudSnapshot = shallowRef<BattleHudSnapshot | null>(null)
 const endingNotice = shallowRef<{ result: RunResult; source: DamageSource } | null>(null)
+let movementIntent = createInputIntent()
 
 const damageSourceLabels: Readonly<Record<DamageSource, string>> = {
   'ordinary-enemy': '寻常妖物围攻',
@@ -167,6 +168,7 @@ function handleSessionEvent(event: GameSessionEvent) {
 function selectInitialArtifact(artifactId: BaseArtifact['id']) {
   session.value?.selectInitialArtifact(artifactId)
   initialArtifactCandidates.value = []
+  restoreMovementIntent()
 }
 
 function selectUpgrade(choiceId: string) {
@@ -176,6 +178,7 @@ function selectUpgrade(choiceId: string) {
   emit('audioIntent', { type: 'effect', cue: 'ui-confirm' })
   if (upgradeChoices.value.length === 0 && ascensionChoices.value.length === 0) {
     session.value?.resume('upgrade')
+    restoreMovementIntent()
   }
 }
 
@@ -184,6 +187,7 @@ function selectAscension(choiceId: string) {
   session.value?.selectAscension(choiceId)
   if (upgradeChoices.value.length === 0 && ascensionChoices.value.length === 0) {
     session.value?.resume('upgrade')
+    restoreMovementIntent()
   }
 }
 
@@ -193,6 +197,7 @@ function skipAscension() {
   emit('audioIntent', { type: 'effect', cue: 'ui-back' })
   if (upgradeChoices.value.length === 0) {
     session.value?.resume('upgrade')
+    restoreMovementIntent()
   }
 }
 
@@ -205,6 +210,7 @@ function tunaHeal() {
   ascensionChoices.value = []
   session.value?.tunaHeal()
   session.value?.resume('upgrade')
+  restoreMovementIntent()
 }
 
 function advanceOnboarding(completedStep: OnboardingStep) {
@@ -224,11 +230,12 @@ function skipOnboarding() {
 }
 
 function setTouchIntent(intent: InputIntent) {
-  session.value?.setInputIntent(intent)
+  movementIntent = createInputIntent({ moveX: intent.moveX, moveY: intent.moveY })
+  session.value?.setInputIntent(movementIntent)
 }
 
 function castSpell() {
-  session.value?.setInputIntent(createInputIntent({ castSpell: true }))
+  session.value?.castSpell()
 }
 
 function togglePause() {
@@ -238,6 +245,7 @@ function togglePause() {
   }
 
   showPause.value = true
+  clearKeyboardIntent()
   session.value?.pause('manual')
 }
 
@@ -303,14 +311,17 @@ function isMovementKey(key: string) {
 }
 
 function syncKeyboardIntent() {
-  session.value?.setInputIntent(
-    mergeMovementIntent({
-      up: props.settings.keyBindings.moveUp.some((key) => pressedKeys.has(key)),
-      down: props.settings.keyBindings.moveDown.some((key) => pressedKeys.has(key)),
-      left: props.settings.keyBindings.moveLeft.some((key) => pressedKeys.has(key)),
-      right: props.settings.keyBindings.moveRight.some((key) => pressedKeys.has(key)),
-    }),
-  )
+  movementIntent = mergeMovementIntent({
+    up: props.settings.keyBindings.moveUp.some((key) => pressedKeys.has(key)),
+    down: props.settings.keyBindings.moveDown.some((key) => pressedKeys.has(key)),
+    left: props.settings.keyBindings.moveLeft.some((key) => pressedKeys.has(key)),
+    right: props.settings.keyBindings.moveRight.some((key) => pressedKeys.has(key)),
+  })
+  restoreMovementIntent()
+}
+
+function restoreMovementIntent() {
+  session.value?.setInputIntent(movementIntent)
 }
 
 function handleKeyDown(event: KeyboardEvent) {
@@ -328,7 +339,7 @@ function handleKeyDown(event: KeyboardEvent) {
   if (isBound('castSpell', key)) {
     event.preventDefault()
     if (!event.repeat) {
-      session.value?.setInputIntent(createInputIntent({ castSpell: true }))
+      session.value?.castSpell()
     }
     return
   }
@@ -354,7 +365,8 @@ function handleKeyUp(event: KeyboardEvent) {
 
 function clearKeyboardIntent() {
   pressedKeys.clear()
-  syncKeyboardIntent()
+  movementIntent = createInputIntent()
+  restoreMovementIntent()
 }
 
 onMounted(() => {
@@ -373,6 +385,8 @@ onMounted(() => {
       desktop: desktopMedia.matches,
     }),
     reducedMotion: props.settings.reducedMotion,
+    compactRadar: !desktopMedia.matches,
+    runSeed: Date.now(),
   })
   window.addEventListener('resize', syncViewport)
   window.addEventListener('blur', clearKeyboardIntent)
@@ -401,7 +415,13 @@ onUnmounted(() => {
     :style="battlefieldStyle"
   >
     <div class="battlefield__stage">
-      <div ref="battleMount" class="battlefield__canvas absolute inset-0" aria-label="青石岭战场" />
+      <div
+        ref="battleMount"
+        class="battlefield__canvas absolute inset-0"
+        aria-label="青石岭战场"
+        aria-description="战场雷达显示主角位置、妖物密度、精英妖物、妖王与灵蕴"
+        data-testid="battlefield-canvas"
+      />
     </div>
 
     <div class="battlefield__toolbar absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-30 flex gap-2">

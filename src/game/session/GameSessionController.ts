@@ -12,6 +12,7 @@ export interface BattleRuntime {
   tunaHeal(): void
   skipOnboarding(): void
   setInputIntent(intent: InputIntent): void
+  castSpell(): void
   resize(viewport: BattleViewport): void
   setReducedMotion(reducedMotion: boolean): void
   setPaused(paused: boolean): void
@@ -105,6 +106,13 @@ export function createGameSessionController(runtime: BattleRuntime): GameSession
       }
 
       runtime.setInputIntent(intent)
+    },
+    castSpell() {
+      if (disposed) {
+        return
+      }
+
+      runtime.castSpell()
     },
     resize(viewport) {
       if (disposed) {

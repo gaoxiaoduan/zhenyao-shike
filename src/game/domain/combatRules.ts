@@ -1,7 +1,10 @@
 export const BASE_FLYING_SWORD_DAMAGE = 12
 
+export type EnemyRole = 'armored-charger' | 'pursuer-flanker' | 'ranged-kiter' | 'elite-pouncer'
+
 export interface EnemyStats {
   readonly id: QingShiRidgeEnemyId
+  readonly role: EnemyRole
   readonly health: number
   readonly radius: number
   readonly speed: number
@@ -27,14 +30,82 @@ export const QING_SHI_RIDGE_ENEMY_IDS: readonly QingShiRidgeEnemyId[] = [
 ]
 
 const QING_SHI_RIDGE_ENEMY_STATS: readonly EnemyStats[] = [
-  { id: 'qing-shi-ridge-boar-demon', health: 24, radius: 13, speed: 24, color: 0x8b5a3c },
-  { id: 'qing-shi-ridge-wood-wolf', health: 34, radius: 15, speed: 30, color: 0x6f884c },
-  { id: 'qing-shi-ridge-mist-moth', health: 44, radius: 17, speed: 36, color: 0x81648a },
-  { id: 'qing-shi-ridge-elite-wolf', health: 180, radius: 24, speed: 40, color: 0xd97706, isElite: true },
+  { id: 'qing-shi-ridge-boar-demon', role: 'armored-charger', health: 54, radius: 17, speed: 22, color: 0x8b5a3c },
+  { id: 'qing-shi-ridge-wood-wolf', role: 'pursuer-flanker', health: 26, radius: 14, speed: 38, color: 0x6f884c },
+  { id: 'qing-shi-ridge-mist-moth', role: 'ranged-kiter', health: 30, radius: 15, speed: 25, color: 0x81648a },
+  { id: 'qing-shi-ridge-elite-wolf', role: 'elite-pouncer', health: 240, radius: 24, speed: 34, color: 0xd97706, isElite: true },
 ]
 
 export function createEnemyStats(id: QingShiRidgeEnemyId): EnemyStats {
   return QING_SHI_RIDGE_ENEMY_STATS.find((stats) => stats.id === id) ?? QING_SHI_RIDGE_ENEMY_STATS[0]!
+}
+
+export interface DemonWaveStage {
+  readonly index: 0 | 1 | 2 | 3
+  readonly startsAtMs: number
+  readonly label: string
+  readonly activeEnemyTarget: number
+  readonly spawnIntervalMs: number
+}
+
+const DEMON_WAVE_STAGES: readonly DemonWaveStage[] = [
+  { index: 0, startsAtMs: 0, label: '初潮 · 走位求生', activeEnemyTarget: 18, spawnIntervalMs: 900 },
+  { index: 1, startsAtMs: 150_000, label: '合围 · 职责交错', activeEnemyTarget: 45, spawnIntervalMs: 520 },
+  { index: 2, startsAtMs: 330_000, label: '盛潮 · 构筑成型', activeEnemyTarget: 70, spawnIntervalMs: 360 },
+  { index: 3, startsAtMs: 480_000, label: '月蚀 · 密潮压境', activeEnemyTarget: 90, spawnIntervalMs: 250 },
+]
+
+export function getDemonWaveStage(elapsedMs: number): DemonWaveStage {
+  const safeElapsedMs = Math.max(0, elapsedMs)
+  return [...DEMON_WAVE_STAGES]
+    .reverse()
+    .find((stage) => safeElapsedMs >= stage.startsAtMs) ?? DEMON_WAVE_STAGES[0]!
+}
+
+export function chooseCommonEnemyForWave(
+  stageIndex: DemonWaveStage['index'],
+  randomFloat: number,
+): QingShiRidgeEnemyId {
+  const roll = Math.max(0, Math.min(0.999_999, randomFloat))
+  if (stageIndex === 0) {
+    return roll < 0.55 ? 'qing-shi-ridge-boar-demon' : 'qing-shi-ridge-wood-wolf'
+  }
+  if (stageIndex === 1) {
+    return roll < 0.35
+      ? 'qing-shi-ridge-boar-demon'
+      : roll < 0.75
+        ? 'qing-shi-ridge-wood-wolf'
+        : 'qing-shi-ridge-mist-moth'
+  }
+  if (stageIndex === 2) {
+    return roll < 0.3
+      ? 'qing-shi-ridge-boar-demon'
+      : roll < 0.62
+        ? 'qing-shi-ridge-wood-wolf'
+        : 'qing-shi-ridge-mist-moth'
+  }
+  return roll < 0.28
+    ? 'qing-shi-ridge-boar-demon'
+    : roll < 0.58
+      ? 'qing-shi-ridge-wood-wolf'
+      : 'qing-shi-ridge-mist-moth'
+}
+
+export interface EliteSpawnInput {
+  readonly elapsedMs: number
+  readonly lastEliteSpawnMs: number | null
+  readonly activeEliteCount: number
+}
+
+export function shouldSpawnElite(input: EliteSpawnInput): boolean {
+  if (input.elapsedMs < 120_000) {
+    return false
+  }
+  const activeLimit = input.elapsedMs >= 480_000 ? 2 : 1
+  if (input.activeEliteCount >= activeLimit) {
+    return false
+  }
+  return input.lastEliteSpawnMs === null || input.elapsedMs - input.lastEliteSpawnMs >= 82_500
 }
 
 export function applyEnemyPressure(health: number, enemyCount: number, deltaMs: number): number {

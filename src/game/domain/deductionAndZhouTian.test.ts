@@ -10,6 +10,7 @@ import {
   performDeduction,
 } from './deductionAndZhouTian'
 import { createArtifactInventory } from './artifactInventory'
+import { createUpgradeDraftState, draftUpgradeChoices } from './artifactInventory'
 
 describe('deductionAndZhouTian domain rules', () => {
   it('deduction correctly tracks count and excludes previous candidate choices when possible', () => {
@@ -39,6 +40,19 @@ describe('deductionAndZhouTian domain rules', () => {
     expect(() => performDeduction(result.nextState, initialChoices, inv)).toThrow('推演次数已用尽。')
   })
 
+  it('does not immediately repeat any of the three cards just abandoned', () => {
+    const inventory = createArtifactInventory('qing-feng-jian-xia')
+    const draftState = createUpgradeDraftState(42)
+    const current = draftUpgradeChoices(inventory, draftState).choices
+
+    const result = performDeduction(createDeductionState(1), current, inventory, draftState)
+
+    expect(result.newChoices.length).toBeGreaterThan(0)
+    expect(result.newChoices.every(
+      (choice) => !current.some((abandoned) => abandoned.choiceId === choice.choiceId),
+    )).toBe(true)
+  })
+
   it('calculateTunaHeal restores 15% of max HP', () => {
     expect(calculateTunaHeal(100)).toBe(15)
     expect(calculateTunaHeal(200)).toBe(30)
@@ -54,7 +68,7 @@ describe('deductionAndZhouTian domain rules', () => {
     for (let i = 0; i < MAX_ZHOU_TIAN_COUNT; i++) {
       const res = applyZhouTianChoice(state, 'yu-qi')
       state = res.nextState
-      expect(res.damageMultiplierDelta).toBe(0.1)
+      expect(res.damageMultiplierDelta).toBe(0.06)
     }
 
     choices = generateZhouTianChoices(state)
@@ -66,8 +80,12 @@ describe('deductionAndZhouTian domain rules', () => {
 
     // Apply xing-qi and lian-ti 3 times each
     for (let i = 0; i < MAX_ZHOU_TIAN_COUNT; i++) {
-      state = applyZhouTianChoice(state, 'xing-qi').nextState
-      state = applyZhouTianChoice(state, 'lian-ti').nextState
+      const xingQi = applyZhouTianChoice(state, 'xing-qi')
+      expect(xingQi.attackIntervalMultiplierDelta).toBe(-0.05)
+      state = xingQi.nextState
+      const lianTi = applyZhouTianChoice(state, 'lian-ti')
+      expect(lianTi.maxHealthMultiplierDelta).toBe(0.08)
+      state = lianTi.nextState
     }
 
     choices = generateZhouTianChoices(state)

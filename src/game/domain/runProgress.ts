@@ -76,7 +76,7 @@ export function grantExperience(progress: RunProgress, amount: number): Experien
 }
 
 export function experienceRequiredForLevel(level: number): number {
-  return 6 + Math.max(0, level - 1) * 3
+  return 18 + Math.max(0, level - 1) * 5
 }
 
 export function formatElapsedTime(elapsedMs: number): string {

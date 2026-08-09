@@ -1,24 +1,44 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyEnemyPressure,
+  chooseCommonEnemyForWave,
   createEnemyStats,
+  getDemonWaveStage,
   getOffscreenSpawnPosition,
+  shouldSpawnElite,
   resolveDamage,
 } from './combatRules'
 
 describe('青石岭基础战斗规则', () => {
   it('按妖物职责提供稳定的基础数值（包含精英妖物）', () => {
     expect(createEnemyStats('qing-shi-ridge-boar-demon')).toEqual({
-      id: 'qing-shi-ridge-boar-demon', health: 24, radius: 13, speed: 24, color: 0x8b5a3c,
+      id: 'qing-shi-ridge-boar-demon', role: 'armored-charger', health: 54, radius: 17, speed: 22, color: 0x8b5a3c,
     })
     expect(createEnemyStats('qing-shi-ridge-mist-moth')).toEqual({
-      id: 'qing-shi-ridge-mist-moth', health: 44, radius: 17, speed: 36, color: 0x81648a,
+      id: 'qing-shi-ridge-mist-moth', role: 'ranged-kiter', health: 30, radius: 15, speed: 25, color: 0x81648a,
     })
 
     const elite = createEnemyStats('qing-shi-ridge-elite-wolf')
     expect(elite.isElite).toBe(true)
-    expect(elite.health).toBe(180)
+    expect(elite.health).toBe(240)
     expect(elite.radius).toBeGreaterThan(20)
+  })
+
+  it('在 0:00、2:30、5:30、8:00 推进公开的妖潮阶段与密度预算', () => {
+    expect(getDemonWaveStage(0)).toMatchObject({ index: 0, activeEnemyTarget: 18, spawnIntervalMs: 900 })
+    expect(getDemonWaveStage(150_000)).toMatchObject({ index: 1, activeEnemyTarget: 45, spawnIntervalMs: 520 })
+    expect(getDemonWaveStage(330_000)).toMatchObject({ index: 2, activeEnemyTarget: 70, spawnIntervalMs: 360 })
+    expect(getDemonWaveStage(480_000)).toMatchObject({ index: 3, activeEnemyTarget: 90, spawnIntervalMs: 250 })
+    expect(getDemonWaveStage(599_999).activeEnemyTarget).toBeLessThanOrEqual(100)
+  })
+
+  it('按阶段与固定随机值复现职责组合，并按公开节奏生成精英妖物', () => {
+    expect(chooseCommonEnemyForWave(0, 0.9)).toBe('qing-shi-ridge-wood-wolf')
+    expect(chooseCommonEnemyForWave(1, 0.9)).toBe('qing-shi-ridge-mist-moth')
+    expect(shouldSpawnElite({ elapsedMs: 119_999, lastEliteSpawnMs: null, activeEliteCount: 0 })).toBe(false)
+    expect(shouldSpawnElite({ elapsedMs: 120_000, lastEliteSpawnMs: null, activeEliteCount: 0 })).toBe(true)
+    expect(shouldSpawnElite({ elapsedMs: 500_000, lastEliteSpawnMs: 410_000, activeEliteCount: 1 })).toBe(true)
+    expect(shouldSpawnElite({ elapsedMs: 500_000, lastEliteSpawnMs: 410_000, activeEliteCount: 2 })).toBe(false)
   })
 
   it('将接触到主角的妖物数量转化为确定的生命损失', () => {

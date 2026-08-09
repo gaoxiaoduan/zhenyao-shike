@@ -343,6 +343,107 @@ export function generateUpgradeChoices(
   return choices.slice(0, count)
 }
 
+export interface UpgradeDraftState {
+  readonly seed: number
+  readonly missedOwnedUpgrades: Readonly<Partial<Record<BaseArtifactId, number>>>
+  readonly lastChoiceIds: readonly string[]
+}
+
+export interface UpgradeDraftOptions {
+  readonly count?: number
+  readonly excludedChoiceIds?: readonly string[]
+}
+
+export function createUpgradeDraftState(seed: number): UpgradeDraftState {
+  return {
+    seed: normalizeSeed(seed),
+    missedOwnedUpgrades: {},
+    lastChoiceIds: [],
+  }
+}
+
+export function draftUpgradeChoices(
+  inventory: ArtifactInventory,
+  state: UpgradeDraftState,
+  options: UpgradeDraftOptions = {},
+): { readonly choices: readonly UpgradeChoice[]; readonly nextState: UpgradeDraftState } {
+  const count = Math.max(0, Math.floor(options.count ?? 3))
+  const allChoices = [...generateUpgradeChoices(inventory, Number.POSITIVE_INFINITY)]
+  const excludedIds = new Set(options.excludedChoiceIds ?? [])
+  const preferredPool = allChoices.filter((choice) => !excludedIds.has(choice.choiceId))
+  const pool = preferredPool.length > 0 ? preferredPool : allChoices
+  const selected: UpgradeChoice[] = []
+  let seed = normalizeSeed(state.seed)
+
+  function takeChoice(candidates: readonly UpgradeChoice[]) {
+    const remaining = candidates.filter(
+      (choice) => pool.some((candidate) => candidate.choiceId === choice.choiceId)
+        && !selected.some((picked) => picked.choiceId === choice.choiceId),
+    )
+    if (remaining.length === 0 || selected.length >= count) {
+      return
+    }
+    const random = nextSeededFloat(seed)
+    seed = random.seed
+    const totalWeight = remaining.reduce((sum, choice) => sum + (choice.type === 'upgrade' ? 1.25 : 1), 0)
+    let cursor = random.value * totalWeight
+    const picked = remaining.find((choice) => {
+      cursor -= choice.type === 'upgrade' ? 1.25 : 1
+      return cursor <= 0
+    }) ?? remaining[remaining.length - 1]!
+    selected.push(picked)
+  }
+
+  const pityChoices = pool
+    .filter((choice) => choice.type === 'upgrade')
+    .filter((choice) => (state.missedOwnedUpgrades[choice.artifactId] ?? 0) >= 3)
+    .sort((left, right) => left.artifactId.localeCompare(right.artifactId))
+  if (pityChoices[0]) {
+    selected.push(pityChoices[0])
+  }
+
+  if (!selected.some((choice) => choice.type === 'upgrade')) {
+    takeChoice(pool.filter((choice) => choice.type === 'upgrade'))
+  }
+  takeChoice(pool.filter((choice) => choice.type === 'acquire'))
+  while (selected.length < Math.min(count, pool.length)) {
+    takeChoice(pool)
+  }
+
+  const nextMisses: Partial<Record<BaseArtifactId, number>> = {}
+  for (const choice of allChoices) {
+    if (choice.type !== 'upgrade') {
+      continue
+    }
+    nextMisses[choice.artifactId] = selected.some((picked) => picked.artifactId === choice.artifactId)
+      ? 0
+      : (state.missedOwnedUpgrades[choice.artifactId] ?? 0) + 1
+  }
+
+  return {
+    choices: selected,
+    nextState: {
+      seed,
+      missedOwnedUpgrades: nextMisses,
+      lastChoiceIds: selected.map((choice) => choice.choiceId),
+    },
+  }
+}
+
+function normalizeSeed(seed: number): number {
+  const normalized = Math.floor(seed) >>> 0
+  return normalized === 0 ? 0x9e3779b9 : normalized
+}
+
+function nextSeededFloat(seed: number): { readonly seed: number; readonly value: number } {
+  let next = normalizeSeed(seed)
+  next ^= next << 13
+  next ^= next >>> 17
+  next ^= next << 5
+  const normalized = next >>> 0
+  return { seed: normalized, value: normalized / 0x1_0000_0000 }
+}
+
 export function applyUpgradeChoice(
   inventory: ArtifactInventory,
   artifactId: BaseArtifactId,
