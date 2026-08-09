@@ -9,7 +9,7 @@ import {
   MAX_ZHOU_TIAN_COUNT,
   performDeduction,
 } from './deductionAndZhouTian'
-import { createArtifactInventory } from './artifactInventory'
+import { applyUpgradeChoice, createArtifactInventory } from './artifactInventory'
 import { createUpgradeDraftState, draftUpgradeChoices } from './artifactInventory'
 
 describe('deductionAndZhouTian domain rules', () => {
@@ -65,6 +65,26 @@ describe('deductionAndZhouTian domain rules', () => {
     expect(canPerformDeduction(deduction, current, inventory, draftState)).toBe(false)
     expect(() => performDeduction(deduction, current, inventory, draftState)).toThrow('候选不足三张')
     expect(deduction.remainingCount).toBe(1)
+  })
+
+  it('never falls back to the same three cards when they exhaust the legal pool', () => {
+    let inventory = createArtifactInventory('qing-feng-jian-xia')
+    inventory = applyUpgradeChoice(inventory, 'lei-zhuan-fu-ce')
+    inventory = applyUpgradeChoice(inventory, 'si-xiang-zhen-qi')
+    inventory = applyUpgradeChoice(inventory, 'fu-yao-yu-yi')
+    for (let level = 1; level < 5; level += 1) {
+      inventory = applyUpgradeChoice(inventory, 'qing-feng-jian-xia')
+    }
+    const draftState = {
+      ...createUpgradeDraftState(12),
+      flexibleRanks: { 'flex-sharpen': 3, 'flex-circulate': 3, 'flex-fortify': 3 },
+    } as const
+    const current = draftUpgradeChoices(inventory, draftState).choices
+    const deduction = createDeductionState(1)
+
+    expect(current).toHaveLength(3)
+    expect(canPerformDeduction(deduction, current, inventory, draftState)).toBe(false)
+    expect(() => performDeduction(deduction, current, inventory, draftState)).toThrow('候选不足三张')
   })
 
   it('calculateTunaHeal restores 15% of max HP', () => {

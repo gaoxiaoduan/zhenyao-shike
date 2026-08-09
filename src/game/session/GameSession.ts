@@ -19,13 +19,19 @@ export interface BattleHudSnapshot {
   readonly experienceToNextLevel: number
   readonly elapsedMs: number
   readonly enemyCount: number
-  readonly movementActive: boolean
-  readonly distanceTravelled: number
   readonly eliteCount: number
   readonly weakestEliteHealthPercent: number | null
   readonly stageLabel: string
   readonly spellCooldownMs: number
   readonly artifacts: readonly RunArtifactSummary[]
+}
+
+export interface BattleInstrumentationSnapshot {
+  readonly distanceTravelled: number
+  readonly radarRendered: boolean
+  readonly radarEnemyRegions: number
+  readonly radarSpiritRegions: number
+  readonly radarLandmarks: number
 }
 
 export type GameSessionEvent =
@@ -72,4 +78,6 @@ export interface CreateGameSessionOptions {
   readonly runSeed?: number
   /** Test-harness clock compression. Product callers should leave this unset. */
   readonly elapsedTimeScale?: number
+  /** DEV-only typed instrumentation seam for browser acceptance tests. */
+  readonly onInstrumentation?: (snapshot: BattleInstrumentationSnapshot) => void
 }

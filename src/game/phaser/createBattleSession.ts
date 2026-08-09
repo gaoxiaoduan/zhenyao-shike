@@ -87,7 +87,7 @@ import {
   performDeduction,
   type ZhouTianOptionId,
 } from '../domain/deductionAndZhouTian'
-import type { CreateGameSessionOptions, GameSessionEvent } from '../session/GameSession'
+import type { BattleInstrumentationSnapshot, CreateGameSessionOptions, GameSessionEvent } from '../session/GameSession'
 import { createGameSessionController, type BattleRuntime } from '../session/GameSessionController'
 
 const WORLD_SIZE = 2048
@@ -176,6 +176,7 @@ class QingShiRidgeScene extends Phaser.Scene {
   private readonly renderScale: number
   private readonly compactRadar: boolean
   private readonly elapsedTimeScale: number
+  private readonly emitInstrumentation?: (snapshot: BattleInstrumentationSnapshot) => void
   private reducedMotion: boolean
   private graphics!: Phaser.GameObjects.Graphics
   private radarGraphics!: Phaser.GameObjects.Graphics
@@ -248,6 +249,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     compactRadar: boolean,
     runSeed: number,
     elapsedTimeScale: number,
+    emitInstrumentation?: (snapshot: BattleInstrumentationSnapshot) => void,
   ) {
     super({ key: 'qing-shi-ridge' })
     this.emitSessionEvent = emitSessionEvent
@@ -257,6 +259,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.viewportHeight = viewportHeight
     this.compactRadar = compactRadar
     this.elapsedTimeScale = Math.max(1, elapsedTimeScale)
+    this.emitInstrumentation = emitInstrumentation
     this.upgradeDraftState = createUpgradeDraftState(runSeed)
   }
 
@@ -1483,8 +1486,6 @@ class QingShiRidgeScene extends Phaser.Scene {
         experienceToNextLevel: this.progress.experienceToNextLevel,
         elapsedMs: this.progress.elapsedMs,
         enemyCount: this.enemies.length,
-        movementActive: this.inputIntent.moveX !== 0 || this.inputIntent.moveY !== 0,
-        distanceTravelled: Math.floor(this.distanceTravelled),
         eliteCount: elites.length,
         weakestEliteHealthPercent,
         stageLabel: stageStatus,
@@ -1810,11 +1811,13 @@ class QingShiRidgeScene extends Phaser.Scene {
     radar.fillStyle(0x67e8f9, 1).fillCircle(player.x, player.y, 4.2 / this.cameraZoom)
     radar.lineStyle(1.5 / this.cameraZoom, 0xffffff, 0.95).strokeCircle(player.x, player.y, 6.2 / this.cameraZoom)
 
-    const radarHost = this.game.canvas.parentElement
-    radarHost?.setAttribute('data-radar-rendered', 'true')
-    radarHost?.setAttribute('data-radar-enemy-regions', String(commonEnemyCells.length))
-    radarHost?.setAttribute('data-radar-spirit-regions', String(spiritCells.length))
-    radarHost?.setAttribute('data-radar-landmarks', String(landmarks.length))
+    this.emitInstrumentation?.({
+      distanceTravelled: Math.floor(this.distanceTravelled),
+      radarRendered: true,
+      radarEnemyRegions: commonEnemyCells.length,
+      radarSpiritRegions: spiritCells.length,
+      radarLandmarks: landmarks.length,
+    })
   }
 }
 
@@ -1828,6 +1831,7 @@ export function createBattleSession(options: CreateGameSessionOptions) {
     options.compactRadar ?? false,
     options.runSeed ?? Date.now(),
     options.elapsedTimeScale ?? 1,
+    options.onInstrumentation,
   )
   const game = new Phaser.Game({
     type: Phaser.AUTO,

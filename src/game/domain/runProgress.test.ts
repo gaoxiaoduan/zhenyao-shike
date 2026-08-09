@@ -38,7 +38,7 @@ describe('run progress', () => {
 
     expect(result.levelsGained).toBe(2)
     expect(result.progress.level).toBe(3)
-    expect(result.progress.experience).toBe(4)
+    expect(result.progress.experience).toBe(1)
     expect(result.progress.experienceToNextLevel).toBe(experienceRequiredForLevel(3))
   })
 

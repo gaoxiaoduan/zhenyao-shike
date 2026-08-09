@@ -366,6 +366,7 @@ export interface UpgradeDraftState {
 export interface UpgradeDraftOptions {
   readonly count?: number
   readonly excludedChoiceIds?: readonly string[]
+  readonly strictExclusion?: boolean
 }
 
 export function createUpgradeDraftState(seed: number): UpgradeDraftState {
@@ -420,7 +421,11 @@ export function draftUpgradeChoices(
   const allChoices: UpgradeDraftChoice[] = [...artifactChoices, ...flexibleChoices]
   const excludedIds = new Set(options.excludedChoiceIds ?? [])
   const preferredPool = allChoices.filter((choice) => !excludedIds.has(choice.choiceId))
-  const pool = preferredPool.length > 0 ? preferredPool : allChoices
+  const pool = options.strictExclusion
+    ? preferredPool
+    : preferredPool.length > 0
+      ? preferredPool
+      : allChoices
   const selected: UpgradeDraftChoice[] = []
   let seed = normalizeSeed(state.seed)
 

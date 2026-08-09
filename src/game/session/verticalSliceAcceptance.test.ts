@@ -4,16 +4,34 @@ import {
   applyUpgradeChoice,
   createArtifactInventory,
   getAvailableAscensionChoices,
+  getArtifactStats,
   MAX_ARTIFACT_LEVEL,
+  type AscendedArtifactId,
 } from '../domain/artifactInventory'
 import {
   advanceWolfKingEncounter,
   createWolfKingEncounter,
   damageWolfKing,
   WOLF_KING_INTRO_DURATION_MS,
-  WOLF_KING_MAX_HEALTH,
 } from '../domain/wolfKingRules'
 import { createGameSessionController, type BattleRuntime } from './GameSessionController'
+
+function expectAscendedArtifactDefeatsWolfKing(artifactId: AscendedArtifactId) {
+  const stats = getArtifactStats(artifactId, 1)
+  let wolf = createWolfKingEncounter()
+  wolf = advanceWolfKingEncounter(wolf, WOLF_KING_INTRO_DURATION_MS).encounter
+  let combatElapsedMs = 0
+
+  while (wolf.phase !== 'defeated' && combatElapsedMs < 30_000) {
+    wolf = advanceWolfKingEncounter(wolf, stats.intervalMs).encounter
+    wolf = damageWolfKing(wolf, stats.damage).encounter
+    combatElapsedMs += stats.intervalMs
+  }
+
+  expect(wolf.phase).toBe('defeated')
+  expect(combatElapsedMs).toBeGreaterThan(stats.intervalMs)
+  expect(combatElapsedMs).toBeLessThan(30_000)
+}
 
 describe('核心切片与构筑验收 (Issue #8)', () => {
   it('验证构筑一：剑修/剑翼构筑 (青锋剑匣 + 扶摇羽衣 -> 流光剑翼) 完成整局历练', () => {
@@ -32,11 +50,7 @@ describe('核心切片与构筑验收 (Issue #8)', () => {
     const ascended = applyAscensionChoice(inv, recipe.choiceId)
     expect(ascended.slots).toEqual([{ id: 'liu-guang-jian-yi', level: 1 }])
 
-    // Wolf King defeat simulation
-    let wolf = createWolfKingEncounter()
-    wolf = advanceWolfKingEncounter(wolf, WOLF_KING_INTRO_DURATION_MS).encounter
-    const victory = damageWolfKing(wolf, WOLF_KING_MAX_HEALTH + 10)
-    expect(victory.encounter.phase).toBe('defeated')
+    expectAscendedArtifactDefeatsWolfKing('liu-guang-jian-yi')
   })
 
   it('验证构筑二：雷法/雷阵构筑 (雷篆符册 + 四象阵旗 -> 九霄雷阵) 完成整局历练', () => {
@@ -55,10 +69,7 @@ describe('核心切片与构筑验收 (Issue #8)', () => {
     const ascended = applyAscensionChoice(inv, recipe.choiceId)
     expect(ascended.slots).toEqual([{ id: 'jiu-xiao-lei-zhen', level: 1 }])
 
-    let wolf = createWolfKingEncounter()
-    wolf = advanceWolfKingEncounter(wolf, WOLF_KING_INTRO_DURATION_MS).encounter
-    const victory = damageWolfKing(wolf, WOLF_KING_MAX_HEALTH + 10)
-    expect(victory.encounter.phase).toBe('defeated')
+    expectAscendedArtifactDefeatsWolfKing('jiu-xiao-lei-zhen')
   })
 
   it('验证构筑三：诛邪剑阵构筑 (青锋剑匣 + 四象阵旗 -> 诛邪剑阵) 完成整局历练', () => {
@@ -77,10 +88,7 @@ describe('核心切片与构筑验收 (Issue #8)', () => {
     const ascended = applyAscensionChoice(inv, recipe.choiceId)
     expect(ascended.slots).toEqual([{ id: 'zhu-xie-jian-zhen', level: 1 }])
 
-    let wolf = createWolfKingEncounter()
-    wolf = advanceWolfKingEncounter(wolf, WOLF_KING_INTRO_DURATION_MS).encounter
-    const victory = damageWolfKing(wolf, WOLF_KING_MAX_HEALTH + 10)
-    expect(victory.encounter.phase).toBe('defeated')
+    expectAscendedArtifactDefeatsWolfKing('zhu-xie-jian-zhen')
   })
 
   it('验证全套浏览器流程控制（升级暂停、屏幕方向暂停、可见性暂停、手动暂停与重开）', () => {

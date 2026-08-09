@@ -15,7 +15,7 @@ import type { AudioIntent } from '../game/audio/audioDirector'
 import type { DamageSource, RunResult, RunSummary } from '../game/domain/runSummary'
 import { computeBattleViewport, computeRenderScale } from '../game/platform/viewportPolicy'
 import { normalizeBindingKey, type ControlAction, type GameSettings } from '../game/settings/gameSettings'
-import type { BattleHudSnapshot, GameSession, GameSessionEvent, OnboardingStep } from '../game/session/GameSession'
+import type { BattleHudSnapshot, BattleInstrumentationSnapshot, GameSession, GameSessionEvent, OnboardingStep } from '../game/session/GameSession'
 import BattleTouchControls from './BattleTouchControls.vue'
 import BattleHud from './game/BattleHud.vue'
 import InitialArtifactSelectionModal from './InitialArtifactSelectionModal.vue'
@@ -62,6 +62,22 @@ const onboardingProgress = shallowRef<OnboardingProgress>(createOnboardingProgre
 const hudSnapshot = shallowRef<BattleHudSnapshot | null>(null)
 const endingNotice = shallowRef<{ result: RunResult; source: DamageSource } | null>(null)
 let movementIntent = createInputIntent()
+const e2eTimeScale = import.meta.env.DEV
+  && new URLSearchParams(window.location.search).get('e2e-time') === '30'
+  ? 30
+  : 1
+
+function recordE2eInstrumentation(snapshot: BattleInstrumentationSnapshot) {
+  const mount = battleMount.value
+  if (!mount || e2eTimeScale === 1) {
+    return
+  }
+  mount.setAttribute('data-radar-rendered', String(snapshot.radarRendered))
+  mount.setAttribute('data-radar-enemy-regions', String(snapshot.radarEnemyRegions))
+  mount.setAttribute('data-radar-spirit-regions', String(snapshot.radarSpiritRegions))
+  mount.setAttribute('data-radar-landmarks', String(snapshot.radarLandmarks))
+  mount.setAttribute('data-movement-distance', String(snapshot.distanceTravelled))
+}
 
 const damageSourceLabels: Readonly<Record<DamageSource, string>> = {
   'ordinary-enemy': '寻常妖物围攻',
@@ -389,9 +405,8 @@ onMounted(() => {
     reducedMotion: props.settings.reducedMotion,
     compactRadar: !desktopMedia.matches,
     runSeed: Date.now(),
-    elapsedTimeScale: import.meta.env.DEV && new URLSearchParams(window.location.search).get('e2e-time') === '30'
-      ? 30
-      : 1,
+    elapsedTimeScale: e2eTimeScale,
+    onInstrumentation: e2eTimeScale > 1 ? recordE2eInstrumentation : undefined,
   })
   window.addEventListener('resize', syncViewport)
   window.addEventListener('blur', clearKeyboardIntent)

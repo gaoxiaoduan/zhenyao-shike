@@ -26,6 +26,7 @@ export function canPerformDeduction(
   return draftUpgradeChoices(inventory, draftState, {
     count: 3,
     excludedChoiceIds: currentChoices.map((choice) => choice.choiceId),
+    strictExclusion: true,
   }).choices.length === 3
 }
 
@@ -46,8 +47,10 @@ export function performDeduction(
   const draft = draftUpgradeChoices(inventory, draftState, {
     count: 3,
     excludedChoiceIds: currentChoices.map((choice) => choice.choiceId),
+    strictExclusion: true,
   })
-  if (draft.choices.length < 3) {
+  const abandonedIds = new Set(currentChoices.map((choice) => choice.choiceId))
+  if (draft.choices.length < 3 || draft.choices.some((choice) => abandonedIds.has(choice.choiceId))) {
     throw new Error('不重复候选不足三张，本次推演未消耗。')
   }
 
