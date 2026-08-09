@@ -177,6 +177,7 @@ class QingShiRidgeScene extends Phaser.Scene {
   private readonly compactRadar: boolean
   private readonly elapsedTimeScale: number
   private readonly emitInstrumentation?: (snapshot: BattleInstrumentationSnapshot) => void
+  private readonly deterministicAcceptance: boolean
   private reducedMotion: boolean
   private graphics!: Phaser.GameObjects.Graphics
   private radarGraphics!: Phaser.GameObjects.Graphics
@@ -250,6 +251,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     runSeed: number,
     elapsedTimeScale: number,
     emitInstrumentation?: (snapshot: BattleInstrumentationSnapshot) => void,
+    deterministicAcceptance = false,
   ) {
     super({ key: 'qing-shi-ridge' })
     this.emitSessionEvent = emitSessionEvent
@@ -260,6 +262,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.compactRadar = compactRadar
     this.elapsedTimeScale = Math.max(1, elapsedTimeScale)
     this.emitInstrumentation = emitInstrumentation
+    this.deterministicAcceptance = deterministicAcceptance
     this.upgradeDraftState = createUpgradeDraftState(runSeed)
   }
 
@@ -801,7 +804,7 @@ class QingShiRidgeScene extends Phaser.Scene {
       height: cam.worldView.height || 600,
     }
 
-    const spawnPos = getOffscreenSpawnPosition(cameraWorld, WORLD_SIZE, 80)
+    let spawnPos = getOffscreenSpawnPosition(cameraWorld, WORLD_SIZE, 80)
     const spawnElite = forceElite || this.isEliteSpawnDue()
     const waveStage = getDemonWaveStage(this.progress.elapsedMs)
     const enemyId: QingShiRidgeEnemyId = spawnElite
@@ -809,6 +812,12 @@ class QingShiRidgeScene extends Phaser.Scene {
       : commonEnemyId ?? chooseCommonEnemyForWave(waveStage.index, Phaser.Math.RND.frac())
     if (spawnElite) {
       this.lastEliteSpawnMs = this.progress.elapsedMs
+      if (this.deterministicAcceptance) {
+        spawnPos = {
+          x: Phaser.Math.Clamp(this.player.x + 120, 36, WORLD_SIZE - 36),
+          y: this.player.y,
+        }
+      }
     }
 
     const stats = createEnemyStats(enemyId)
@@ -1832,6 +1841,7 @@ export function createBattleSession(options: CreateGameSessionOptions) {
     options.runSeed ?? Date.now(),
     options.elapsedTimeScale ?? 1,
     options.onInstrumentation,
+    options.deterministicAcceptance ?? false,
   )
   const game = new Phaser.Game({
     type: Phaser.AUTO,

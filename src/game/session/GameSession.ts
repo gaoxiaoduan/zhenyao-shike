@@ -80,4 +80,6 @@ export interface CreateGameSessionOptions {
   readonly elapsedTimeScale?: number
   /** DEV-only typed instrumentation seam for browser acceptance tests. */
   readonly onInstrumentation?: (snapshot: BattleInstrumentationSnapshot) => void
+  /** DEV-only deterministic placement for browser acceptance fixtures. */
+  readonly deterministicAcceptance?: boolean
 }

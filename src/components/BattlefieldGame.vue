@@ -407,6 +407,7 @@ onMounted(() => {
     runSeed: Date.now(),
     elapsedTimeScale: e2eTimeScale,
     onInstrumentation: e2eTimeScale > 1 ? recordE2eInstrumentation : undefined,
+    deterministicAcceptance: e2eTimeScale > 1,
   })
   window.addEventListener('resize', syncViewport)
   window.addEventListener('blur', clearKeyboardIntent)
