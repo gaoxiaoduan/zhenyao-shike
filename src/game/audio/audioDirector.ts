@@ -19,9 +19,20 @@ export type SoundCue =
   | 'mist-shot'
   | 'elite-warning'
   | 'spirit-collected'
+  | 'player-step'
   | 'player-hurt'
   | 'player-critical'
   | 'spell-cast'
+  | 'spell-blocked'
+  | 'spell-end'
+  | 'hit-protected'
+  | 'boss-charge-warning'
+  | 'boss-charge-start'
+  | 'boss-breach'
+  | 'event-alert'
+  | 'lingquan-complete'
+  | 'lair-destroyed'
+  | 'event-complete'
   | 'artifact-ascended'
   | 'boss-arrival'
   | 'boss-howl'
@@ -53,6 +64,7 @@ const CUE_THROTTLE_MS: Partial<Record<SoundCue, number>> = {
   'ordinary-hit': 80,
   'enemy-defeated': 60,
   'spirit-collected': 45,
+  'player-step': 140,
   'player-hurt': 180,
   'sword-cast': 90,
   'thunder-cast': 120,
@@ -64,10 +76,22 @@ const CUE_THROTTLE_MS: Partial<Record<SoundCue, number>> = {
   'boar-charge': 220,
   'mist-shot': 180,
   'elite-warning': 500,
+  'spell-blocked': 180,
+  'spell-end': 260,
+  'hit-protected': 180,
+  'boss-charge-warning': 500,
+  'boss-charge-start': 300,
+  'boss-breach': 250,
+  'event-alert': 500,
+  'lingquan-complete': 300,
+  'lair-destroyed': 220,
+  'event-complete': 260,
 }
 
 const HAPTIC_CUES: ReadonlySet<SoundCue> = new Set([
   'spell-cast',
+  'spell-blocked',
+  'boss-breach',
   'artifact-ascended',
   'player-critical',
 ])
@@ -85,6 +109,12 @@ const HIGH_PRIORITY_CUES: ReadonlySet<SoundCue> = new Set([
   'boss-enraged',
   'boss-defeated',
   'elite-warning',
+  'boss-charge-warning',
+  'boss-charge-start',
+  'event-alert',
+  'lingquan-complete',
+  'lair-destroyed',
+  'event-complete',
 ])
 
 export function soundCuePriority(cue: SoundCue): 'high' | 'normal' {

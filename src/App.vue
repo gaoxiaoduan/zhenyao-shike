@@ -8,7 +8,8 @@ import { useGameSettings } from './composables/useGameSettings'
 import { createAudioDirector, type AudioIntent } from './game/audio/audioDirector'
 import { createBrowserAudioOutput } from './game/audio/browserAudioOutput'
 import type { RunSummary } from './game/domain/runSummary'
-import { recordRunResult } from './game/domain/runRecord'
+import { hasBossPracticeUnlocked, recordRunResult, unlockBossPractice } from './game/domain/runRecord'
+import { GROWTH_PHASE_DURATION_MS } from './game/domain/runProgress'
 import type { ControlAction, GameSettings } from './game/settings/gameSettings'
 import { CONTROL_ACTION_LABELS } from './game/settings/controlPresentation'
 
@@ -21,7 +22,10 @@ const screen = shallowRef<Screen>('home')
 const overlay = shallowRef<Overlay>(null)
 const lastResult = shallowRef<RunSummary | null>(null)
 const isNewRecord = shallowRef(false)
+const practiceResult = shallowRef(false)
 const showOnboarding = shallowRef(true)
+const practiceMode = shallowRef(false)
+const bossPracticeUnlocked = shallowRef(hasBossPracticeUnlocked(window.localStorage))
 const rebindError = shallowRef<string | null>(null)
 const fullscreenAvailable = shallowRef(Boolean(document.fullscreenEnabled))
 const desktopMedia = window.matchMedia('(hover: hover) and (pointer: fine)')
@@ -43,7 +47,7 @@ function handleAudioIntent(intent: AudioIntent) {
   audioDirector.handle(intent)
 }
 
-function startRun() {
+function startRun(isPractice = false) {
   unlockAudio()
   if (!desktopMedia.matches && document.fullscreenEnabled && !document.fullscreenElement) {
     void document.documentElement.requestFullscreen().catch(() => undefined)
@@ -51,6 +55,10 @@ function startRun() {
   audioDirector.handle({ type: 'music', stage: 'opening' })
   audioDirector.handle({ type: 'pause', mode: 'active' })
   overlay.value = null
+  practiceMode.value = isPractice
+  if (isPractice) {
+    showOnboarding.value = false
+  }
   screen.value = 'run'
 }
 
@@ -66,9 +74,18 @@ function toggleFullscreen() {
 }
 
 function finishRun(summary: RunSummary) {
-  const record = recordRunResult(window.localStorage, summary.elapsedMs, summary.result)
+  const wasPractice = practiceMode.value
+  if (!wasPractice && summary.elapsedMs >= GROWTH_PHASE_DURATION_MS) {
+    unlockBossPractice(window.localStorage)
+    bossPracticeUnlocked.value = true
+  }
+  const record = wasPractice
+    ? { isNewRecord: false, demonCoreEarned: false }
+    : recordRunResult(window.localStorage, summary.elapsedMs, summary.result)
   lastResult.value = { ...summary, demonCores: record.demonCoreEarned ? 1 : 0 }
   isNewRecord.value = record.isNewRecord
+  practiceResult.value = wasPractice
+  practiceMode.value = false
   audioDirector.handle({ type: 'music', stage: summary.result })
   overlay.value = null
   screen.value = 'result'
@@ -126,7 +143,9 @@ onUnmounted(() => {
     <HomeScreen
       v-if="screen === 'home'"
       :fullscreen-available="fullscreenAvailable"
+      :boss-practice-unlocked="bossPracticeUnlocked"
       @start="startRun"
+      @practice="startRun(true)"
       @open-settings="openOverlay('settings')"
       @open-controls="openOverlay('controls')"
       @toggle-fullscreen="toggleFullscreen"
@@ -136,6 +155,7 @@ onUnmounted(() => {
       v-else-if="screen === 'run'"
       :settings="settings"
       :show-onboarding="showOnboarding"
+      :practice-mode="practiceMode"
       :input-suspended="overlay !== null"
       @finished="finishRun"
       @onboarding-completed="showOnboarding = false"
@@ -148,6 +168,7 @@ onUnmounted(() => {
       v-else-if="lastResult"
       :summary="lastResult"
       :new-record="isNewRecord"
+      :practice-mode="practiceResult"
       @retry="startRun"
       @home="returnHome"
     />

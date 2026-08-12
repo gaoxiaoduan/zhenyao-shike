@@ -56,6 +56,7 @@ const EFFECT_TONES: Record<SoundCue, readonly ToneSpec[]> = {
     { frequency: 110, endFrequency: 82, duration: 0.42, gain: 0.15, wave: 'sawtooth' },
   ],
   'spirit-collected': [{ frequency: 660, endFrequency: 880, duration: 0.09, gain: 0.08, wave: 'sine' }],
+  'player-step': [{ frequency: 92, endFrequency: 68, duration: 0.045, gain: 0.045, wave: 'triangle' }],
   'player-hurt': [{ frequency: 120, endFrequency: 58, duration: 0.24, gain: 0.24, wave: 'sawtooth' }],
   'player-critical': [
     { frequency: 90, endFrequency: 45, duration: 0.3, gain: 0.28, wave: 'sawtooth' },
@@ -65,6 +66,31 @@ const EFFECT_TONES: Record<SoundCue, readonly ToneSpec[]> = {
     { frequency: 196, endFrequency: 392, duration: 0.34, gain: 0.16, wave: 'sine' },
     { frequency: 293.66, endFrequency: 587.33, duration: 0.3, gain: 0.1, wave: 'triangle' },
   ],
+  'spell-blocked': [
+    { frequency: 740, endFrequency: 1_180, duration: 0.11, gain: 0.14, wave: 'triangle' },
+    { frequency: 370, endFrequency: 220, duration: 0.16, gain: 0.09, wave: 'sine' },
+  ],
+  'spell-end': [{ frequency: 587.33, endFrequency: 293.66, duration: 0.28, gain: 0.1, wave: 'sine' }],
+  'hit-protected': [{ frequency: 520, endFrequency: 780, duration: 0.08, gain: 0.07, wave: 'triangle' }],
+  'boss-charge-warning': [
+    { frequency: 174.61, endFrequency: 261.63, duration: 0.42, gain: 0.18, wave: 'square' },
+    { frequency: 87.31, endFrequency: 65.41, duration: 0.36, gain: 0.12, wave: 'sawtooth' },
+  ],
+  'boss-charge-start': [{ frequency: 110, endFrequency: 55, duration: 0.25, gain: 0.18, wave: 'sawtooth' }],
+  'boss-breach': [
+    { frequency: 330, endFrequency: 660, duration: 0.24, gain: 0.14, wave: 'sine' },
+    { frequency: 660, endFrequency: 990, duration: 0.16, gain: 0.1, wave: 'triangle' },
+  ],
+  'event-alert': [{ frequency: 246.94, endFrequency: 493.88, duration: 0.38, gain: 0.15, wave: 'sine' }],
+  'lingquan-complete': [
+    { frequency: 392, endFrequency: 784, duration: 0.4, gain: 0.14, wave: 'sine' },
+    { frequency: 587.33, endFrequency: 1_174.66, duration: 0.28, gain: 0.08, wave: 'triangle' },
+  ],
+  'lair-destroyed': [
+    { frequency: 98, endFrequency: 49, duration: 0.3, gain: 0.2, wave: 'square' },
+    { frequency: 440, endFrequency: 880, duration: 0.22, gain: 0.1, wave: 'sawtooth' },
+  ],
+  'event-complete': [{ frequency: 523.25, endFrequency: 1_046.5, duration: 0.32, gain: 0.12, wave: 'sine' }],
   'artifact-ascended': [
     { frequency: 220, endFrequency: 440, duration: 0.45, gain: 0.17, wave: 'sine' },
     { frequency: 329.63, endFrequency: 659.25, duration: 0.5, gain: 0.13, wave: 'triangle' },

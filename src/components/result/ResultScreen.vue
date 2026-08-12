@@ -3,10 +3,13 @@ import caveBackgroundUrl from '../../assets/game/qingshi-cave-home.png'
 import type { DamageSource, RunSummary } from '../../game/domain/runSummary'
 import ArtifactIcon from '../game/ArtifactIcon.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   summary: RunSummary
   newRecord: boolean
-}>()
+  practiceMode?: boolean
+}>(), {
+  practiceMode: false,
+})
 
 const emit = defineEmits<{
   retry: []
@@ -39,10 +42,11 @@ function formatTime(elapsedMs: number) {
     <article class="result-card">
       <header class="result-card__header">
         <div>
-          <p>青石岭 · 历练结算</p>
+          <p>{{ props.practiceMode ? '啸月狼王 · 演练结算' : '青石岭 · 历练结算' }}</p>
           <h1>{{ props.summary.result === 'victory' ? '妖王伏诛' : '此行未竟' }}</h1>
           <strong v-if="props.newRecord" class="result-record">新纪录</strong>
-          <span>
+          <span v-if="props.practiceMode">本次演练不计入主线奖励、纪录或妖丹。</span>
+          <span v-else>
             {{ props.summary.result === 'victory' ? '啸月狼王已伏，山道暂得安宁。' : damageLabels[props.summary.finalDamageSource] }}
           </span>
         </div>

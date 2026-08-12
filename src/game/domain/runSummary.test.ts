@@ -23,4 +23,19 @@ describe('createRunSummary', () => {
       hint: '妖群贴身造成了最后一击；保持移动，并优先补足范围压制。',
     })
   })
+
+  it('does not grant retained resources in 妖王演练', () => {
+    const summary = createRunSummary({
+      result: 'defeat',
+      elapsedMs: 600_000,
+      defeatedEnemies: 0,
+      defeatedElites: 0,
+      demonLairDestroyed: false,
+      artifacts: [],
+      finalDamageSource: 'moon-howl',
+      practiceMode: true,
+    })
+    expect(summary.spiritStones).toBe(0)
+    expect(summary.demonCores).toBe(0)
+  })
 })

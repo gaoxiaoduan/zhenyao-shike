@@ -6,11 +6,26 @@ import {
   getDemonWaveStage,
   getWaveSpawnDirective,
   getOffscreenSpawnPosition,
+  BASE_PLAYER_SPEED,
+  WOOD_WOLF_CHASE_SPEED,
+  MIST_ATTACK_SEAT_TARGET,
+  MIST_PROJECTILE_SCREEN_CAP,
+  calculatePlayerSpeed,
+  getMistProjectileBudget,
   shouldSpawnElite,
   resolveDamage,
 } from './combatRules'
 
 describe('青石岭基础战斗规则', () => {
+  it('基础移动快于木狼，扶摇倍率保持可感知但有限', () => {
+    expect(BASE_PLAYER_SPEED).toBe(44)
+    expect(WOOD_WOLF_CHASE_SPEED).toBe(38)
+    expect(calculatePlayerSpeed(1.15)).toBe(50.6)
+    expect(getMistProjectileBudget(480_000)).toEqual({
+      attackSeats: MIST_ATTACK_SEAT_TARGET,
+      projectileCap: MIST_PROJECTILE_SCREEN_CAP,
+    })
+  })
   it('按妖物职责提供稳定的基础数值（包含精英妖物）', () => {
     expect(createEnemyStats('qing-shi-ridge-boar-demon')).toEqual({
       id: 'qing-shi-ridge-boar-demon', role: 'armored-charger', health: 54, radius: 17, speed: 22, color: 0x8b5a3c,

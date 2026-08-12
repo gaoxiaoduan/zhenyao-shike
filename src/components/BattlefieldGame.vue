@@ -15,7 +15,7 @@ import type { AudioIntent } from '../game/audio/audioDirector'
 import type { DamageSource, RunResult, RunSummary } from '../game/domain/runSummary'
 import { computeBattleViewport, computeRenderScale } from '../game/platform/viewportPolicy'
 import { normalizeBindingKey, type ControlAction, type GameSettings } from '../game/settings/gameSettings'
-import type { BattleHudSnapshot, BattleInstrumentationSnapshot, GameSession, GameSessionEvent, OnboardingStep } from '../game/session/GameSession'
+import type { BattleHudSnapshot, BattleInstrumentationSnapshot, BattlefieldEventSnapshot, GameSession, GameSessionEvent, OnboardingStep } from '../game/session/GameSession'
 import BattleTouchControls from './BattleTouchControls.vue'
 import BattleHud from './game/BattleHud.vue'
 import InitialArtifactSelectionModal from './InitialArtifactSelectionModal.vue'
@@ -26,9 +26,11 @@ const props = withDefaults(defineProps<{
   showOnboarding?: boolean
   settings: GameSettings
   inputSuspended?: boolean
+  practiceMode?: boolean
 }>(), {
   showOnboarding: true,
   inputSuspended: false,
+  practiceMode: false,
 })
 
 const emit = defineEmits<{
@@ -61,6 +63,7 @@ const isZhouTian = shallowRef(false)
 const onboardingProgress = shallowRef<OnboardingProgress>(createOnboardingProgress())
 const hudSnapshot = shallowRef<BattleHudSnapshot | null>(null)
 const endingNotice = shallowRef<{ result: RunResult; source: DamageSource } | null>(null)
+const eventNotice = shallowRef<BattlefieldEventSnapshot | null>(null)
 let movementIntent = createInputIntent()
 const e2eTimeScale = import.meta.env.DEV
   && new URLSearchParams(window.location.search).get('e2e-time') === '30'
@@ -112,7 +115,7 @@ const pauseDescription = computed(() => {
   return '自动攻击与妖潮已完全暂停。'
 })
 const audioPauseMode = computed(() => {
-  if (showPause.value || orientationPaused.value || viewportPaused.value || visibilityPaused.value) {
+  if (showPause.value || orientationPaused.value || viewportPaused.value || visibilityPaused.value || eventNotice.value) {
     return 'full' as const
   }
   if (initialSelectionOpen.value || upgradeModalOpen.value) {
@@ -139,6 +142,14 @@ function handleSessionEvent(event: GameSessionEvent) {
 
   if (event.type === 'hud-updated') {
     hudSnapshot.value = event.snapshot
+    return
+  }
+
+  if (event.type === 'battlefield-event') {
+    if (event.firstEncounter) {
+      eventNotice.value = event.event
+      session.value?.pause('tutorial')
+    }
     return
   }
 
@@ -254,6 +265,12 @@ function setTouchIntent(intent: InputIntent) {
 
 function castSpell() {
   session.value?.castSpell()
+}
+
+function resumeEventNotice() {
+  eventNotice.value = null
+  session.value?.resume('tutorial')
+  restoreMovementIntent()
 }
 
 function togglePause() {
@@ -408,6 +425,7 @@ onMounted(() => {
     elapsedTimeScale: e2eTimeScale,
     onInstrumentation: e2eTimeScale > 1 ? recordE2eInstrumentation : undefined,
     deterministicAcceptance: e2eTimeScale > 1,
+    practiceMode: props.practiceMode,
   })
   window.addEventListener('resize', syncViewport)
   window.addEventListener('blur', clearKeyboardIntent)
@@ -460,6 +478,21 @@ onUnmounted(() => {
     <div v-if="endingNotice" class="battlefield__ending" role="status" aria-live="assertive">
       <small>{{ endingNotice.result === 'victory' ? '妖王伏诛' : '致命一击' }}</small>
       <strong>{{ endingNotice.result === 'victory' ? '青石岭暂安' : damageSourceLabels[endingNotice.source] }}</strong>
+    </div>
+
+    <div
+      v-if="eventNotice"
+      class="absolute inset-0 z-50 grid place-items-center bg-stone-950/56 p-5 backdrop-blur-[2px]"
+      role="dialog"
+      aria-label="战场事件说明"
+    >
+      <div class="battlefield__event-card w-full max-w-md rounded-lg border border-cyan-100/35 bg-[#10251f]/95 p-7 shadow-2xl">
+        <p class="text-xs font-bold tracking-[0.32em] text-cyan-100/70">战场事件</p>
+        <h2 class="mt-3 font-serif text-3xl font-bold text-cyan-50">{{ eventNotice.name }}</h2>
+        <p class="mt-4 text-sm leading-7 text-stone-200">{{ eventNotice.objective }}</p>
+        <p class="mt-3 border-l-2 border-amber-200/60 pl-3 text-sm leading-6 text-amber-100/85">奖励：{{ eventNotice.reward }}</p>
+        <button class="game-button mt-7 w-full" type="button" @click="resumeEventNotice">记住规则，继续历练</button>
+      </div>
     </div>
 
     <OnboardingGuide v-if="onboardingStep" :step="onboardingStep" @skip="skipOnboarding" />

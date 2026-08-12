@@ -1,10 +1,24 @@
 import type { RunResult } from './runSummary'
 
 export const RUN_RECORD_STORAGE_KEY = 'zhenyao-shike.run-record.v1'
+export const BOSS_PRACTICE_STORAGE_KEY = 'zhenyao-shike.boss-practice.v1'
 
 interface RunRecordStorage {
   getItem(key: string): string | null
   setItem(key: string, value: string): void
+}
+
+export interface BossPracticeStorage {
+  getItem(key: string): string | null
+  setItem(key: string, value: string): void
+}
+
+export function hasBossPracticeUnlocked(storage: BossPracticeStorage): boolean {
+  return storage.getItem(BOSS_PRACTICE_STORAGE_KEY) === 'unlocked'
+}
+
+export function unlockBossPractice(storage: BossPracticeStorage): void {
+  storage.setItem(BOSS_PRACTICE_STORAGE_KEY, 'unlocked')
 }
 
 interface StoredRunRecord {

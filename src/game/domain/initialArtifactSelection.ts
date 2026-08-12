@@ -48,7 +48,7 @@ const INITIAL_ARTIFACT_CANDIDATES: readonly BaseArtifact[] = [
     attackColor: 0x7dd3fc,
     attackDamage: 10,
     attackIntervalMs: 460,
-    moveSpeedMultiplier: 1.35,
+    moveSpeedMultiplier: 1.15,
   },
 ]
 

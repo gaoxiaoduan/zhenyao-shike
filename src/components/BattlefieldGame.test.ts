@@ -83,4 +83,29 @@ describe('BattlefieldGame input adapter', () => {
     )
     wrapper.unmount()
   })
+
+  it('explains the first battlefield event once and resumes the tutorial pause', async () => {
+    const wrapper = mount(BattlefieldGame, {
+      props: { settings: DEFAULT_GAME_SETTINGS, showOnboarding: false },
+    })
+
+    battleHarness.onEvent?.({
+      type: 'battlefield-event',
+      firstEncounter: true,
+      event: {
+        kind: 'lingquan',
+        phase: 'available',
+        name: '灵泉涌现',
+        objective: '进入青蓝引导区域并维持两秒。',
+        remainingMs: 45_000,
+        reward: '恢复 35% 最大生命',
+      },
+    })
+    await nextTick()
+
+    expect(wrapper.get('[aria-label="战场事件说明"]').text()).toContain('灵泉涌现')
+    await wrapper.get('[aria-label="战场事件说明"] button').trigger('click')
+    expect(battleHarness.session.resume).toHaveBeenCalledWith('tutorial')
+    wrapper.unmount()
+  })
 })

@@ -22,7 +22,7 @@ function expectAscendedArtifactDefeatsWolfKing(artifactId: AscendedArtifactId) {
   wolf = advanceWolfKingEncounter(wolf, WOLF_KING_INTRO_DURATION_MS).encounter
   let combatElapsedMs = 0
 
-  while (wolf.phase !== 'defeated' && combatElapsedMs < 30_000) {
+  while (wolf.phase !== 'defeated' && combatElapsedMs < 240_000) {
     wolf = advanceWolfKingEncounter(wolf, stats.intervalMs).encounter
     wolf = damageWolfKing(wolf, stats.damage).encounter
     combatElapsedMs += stats.intervalMs
@@ -30,10 +30,11 @@ function expectAscendedArtifactDefeatsWolfKing(artifactId: AscendedArtifactId) {
 
   expect(wolf.phase).toBe('defeated')
   expect(combatElapsedMs).toBeGreaterThan(stats.intervalMs)
-  expect(combatElapsedMs).toBeLessThan(30_000)
+  expect(combatElapsedMs).toBeGreaterThanOrEqual(70_000)
+  expect(combatElapsedMs).toBeLessThanOrEqual(240_000)
 }
 
-describe('核心切片与构筑验收 (Issue #8)', () => {
+describe('核心切片与构筑验收 (Issue #9)', () => {
   it('验证构筑一：剑修/剑翼构筑 (青锋剑匣 + 扶摇羽衣 -> 流光剑翼) 完成整局历练', () => {
     let inv = createArtifactInventory('qing-feng-jian-xia')
     inv = applyUpgradeChoice(inv, 'fu-yao-yu-yi')

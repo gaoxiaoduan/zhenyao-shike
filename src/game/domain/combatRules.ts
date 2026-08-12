@@ -1,4 +1,29 @@
 export const BASE_FLYING_SWORD_DAMAGE = 12
+export const BASE_PLAYER_SPEED = 44
+export const WOOD_WOLF_CHASE_SPEED = 38
+export const MIST_PROJECTILE_SCREEN_CAP = 12
+export const MIST_ATTACK_SEAT_TARGET = 6
+
+export interface MistProjectileBudget {
+  readonly attackSeats: number
+  readonly projectileCap: number
+}
+
+/**
+ * The ranged budget is intentionally a small, public rule rather than a
+ * scene-local magic number.  It keeps late waves readable even when many
+ * moths are alive at once.
+ */
+export function getMistProjectileBudget(_elapsedMs: number): MistProjectileBudget {
+  return {
+    attackSeats: MIST_ATTACK_SEAT_TARGET,
+    projectileCap: MIST_PROJECTILE_SCREEN_CAP,
+  }
+}
+
+export function calculatePlayerSpeed(speedMultiplier = 1): number {
+  return Math.round(BASE_PLAYER_SPEED * Math.max(0, speedMultiplier) * 1_000) / 1_000
+}
 
 export type EnemyRole = 'armored-charger' | 'pursuer-flanker' | 'ranged-kiter' | 'elite-pouncer'
 
@@ -31,7 +56,7 @@ export const QING_SHI_RIDGE_ENEMY_IDS: readonly QingShiRidgeEnemyId[] = [
 
 const QING_SHI_RIDGE_ENEMY_STATS: readonly EnemyStats[] = [
   { id: 'qing-shi-ridge-boar-demon', role: 'armored-charger', health: 54, radius: 17, speed: 22, color: 0x8b5a3c },
-  { id: 'qing-shi-ridge-wood-wolf', role: 'pursuer-flanker', health: 26, radius: 14, speed: 38, color: 0x6f884c },
+  { id: 'qing-shi-ridge-wood-wolf', role: 'pursuer-flanker', health: 26, radius: 14, speed: WOOD_WOLF_CHASE_SPEED, color: 0x6f884c },
   { id: 'qing-shi-ridge-mist-moth', role: 'ranged-kiter', health: 30, radius: 15, speed: 25, color: 0x81648a },
   { id: 'qing-shi-ridge-elite-wolf', role: 'elite-pouncer', health: 240, radius: 24, speed: 34, color: 0xd97706, isElite: true },
 ]

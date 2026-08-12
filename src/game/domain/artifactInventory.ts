@@ -89,11 +89,13 @@ export const ARTIFACT_DEFINITIONS: Record<ArtifactId, ArtifactDefinition> = {
       const lvl = Math.min(Math.max(1, level), MAX_ARTIFACT_LEVEL)
       const damages = [10, 14, 19, 25, 32]
       const intervals = [460, 420, 380, 340, 300]
-      const speeds = [1.35, 1.40, 1.45, 1.50, 1.60]
+      // The base movement rule is already responsive; this curve makes each
+      // 羽衣 upgrade perceptible without turning it into a mandatory fix.
+      const speeds = [1.15, 1.20, 1.25, 1.30, 1.35]
       return {
         damage: damages[lvl - 1] ?? 10,
         intervalMs: intervals[lvl - 1] ?? 460,
-        moveSpeedMultiplier: speeds[lvl - 1] ?? 1.35,
+        moveSpeedMultiplier: speeds[lvl - 1] ?? 1.15,
         aoeRadius: 0,
       }
     },
@@ -118,7 +120,7 @@ export const ARTIFACT_DEFINITIONS: Record<ArtifactId, ArtifactDefinition> = {
     getStats: () => ({
       damage: 52,
       intervalMs: 360,
-      moveSpeedMultiplier: 1.7,
+      moveSpeedMultiplier: 1.5,
       aoeRadius: 0,
     }),
   },

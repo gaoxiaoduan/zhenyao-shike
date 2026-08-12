@@ -12,6 +12,12 @@ const props = defineProps<{
 }>()
 
 const spellKey = computed(() => displayControlKey(props.keyBindings.castSpell[0] ?? 'space'))
+const spellCooldownRatio = computed(() => {
+  const remaining = props.snapshot?.spellCooldownMs ?? 0
+  return Math.max(0, Math.min(1, remaining / 10_000))
+})
+const shieldRatio = computed(() => Math.max(0, Math.min(1, (props.snapshot?.spellShieldRemainingMs ?? 0) / 1_500)))
+const eventProgress = computed(() => Math.max(0, Math.min(1, props.snapshot?.battlefieldEvent?.progress ?? 0)))
 </script>
 
 <template>
@@ -39,6 +45,18 @@ const spellKey = computed(() => displayControlKey(props.keyBindings.castSpell[0]
       >
         <i :style="{ width: `${Math.max(0, Math.min(100, ((snapshot?.experience ?? 0) / (snapshot?.experienceToNextLevel ?? 1)) * 100))}%` }" />
       </div>
+    </section>
+
+    <section v-if="snapshot?.boss && snapshot.boss.phase !== 'defeated'" class="battle-hud__boss" aria-label="妖王生命">
+      <div class="battle-hud__boss-heading">
+        <strong>{{ snapshot.boss.name }}</strong>
+        <span>{{ snapshot.boss.phase === 'enraged' ? '狂月' : snapshot.boss.phase === 'arrival' ? '降临' : '决战' }}</span>
+      </div>
+      <div class="battle-hud__boss-bar" role="progressbar" aria-label="啸月狼王生命" :aria-valuenow="snapshot.boss.health" :aria-valuemax="snapshot.boss.maxHealth">
+        <i :style="{ width: `${Math.max(0, Math.min(100, (snapshot.boss.health / snapshot.boss.maxHealth) * 100))}%` }" />
+        <b :style="{ left: `${(snapshot.boss.enragedThreshold / snapshot.boss.maxHealth) * 100}%` }" />
+      </div>
+      <small v-if="snapshot.boss.breachRemainingMs">妖王破绽 · {{ (snapshot.boss.breachRemainingMs / 1000).toFixed(1) }} 秒</small>
     </section>
 
     <aside class="battle-hud__wing battle-hud__wing--left">
@@ -75,13 +93,25 @@ const spellKey = computed(() => displayControlKey(props.keyBindings.castSpell[0]
         ><i :style="{ width: `${snapshot.weakestEliteHealthPercent ?? 0}%` }" /></div>
       </div>
       <div class="battle-hud__spell">
-        <ArtifactIcon id="protective-spell" label="玄光护身诀" />
+        <div class="battle-hud__spell-icon" :class="{ 'battle-hud__spell-icon--ready': !snapshot?.spellCooldownMs }" :style="{ '--spell-cooldown': `${spellCooldownRatio * 100}%`, '--shield-progress': `${shieldRatio * 100}%` }">
+          <ArtifactIcon id="protective-spell" label="玄光护身诀" />
+          <span v-if="snapshot?.spellCooldownMs" class="battle-hud__spell-mask" aria-hidden="true" />
+          <span v-if="snapshot?.spellShieldRemainingMs" class="battle-hud__shield-ring" aria-hidden="true" />
+        </div>
         <span>
           <strong>玄光护身诀</strong>
-          <small>{{ snapshot?.spellCooldownMs ? `${Math.ceil(snapshot.spellCooldownMs / 1000)} 秒` : '可施放' }}</small>
+          <small>{{ snapshot?.spellShieldRemainingMs ? `护盾 ${Math.ceil(snapshot.spellShieldRemainingMs / 100) / 10}s` : snapshot?.spellCooldownMs ? `${Math.ceil(snapshot.spellCooldownMs / 1000)} 秒` : '可施放' }}</small>
         </span>
         <kbd>{{ spellKey }}</kbd>
       </div>
+      <div v-if="snapshot?.hitProtectionRemainingMs" class="battle-hud__protection">受击保护 · {{ (snapshot.hitProtectionRemainingMs / 1000).toFixed(1) }} 秒</div>
+    </aside>
+
+    <aside v-if="snapshot?.battlefieldEvent" class="battle-hud__event" :class="{ 'battle-hud__event--fountain': snapshot.battlefieldEvent.kind === 'lingquan' }" aria-live="polite">
+      <div class="battle-hud__event-heading"><strong>{{ snapshot.battlefieldEvent.name }}</strong><span>{{ snapshot.battlefieldEvent.phase === 'travel' ? '前往' : snapshot.battlefieldEvent.phase === 'guiding' ? '引导中' : '战斗中' }}</span></div>
+      <p>{{ snapshot.battlefieldEvent.objective }}</p>
+      <div class="battle-hud__event-bar"><i :style="{ width: `${eventProgress * 100}%` }" /></div>
+      <small>{{ Math.ceil(snapshot.battlefieldEvent.remainingMs / 1000) }} 秒 · {{ snapshot.battlefieldEvent.reward }}</small>
     </aside>
   </div>
 </template>
@@ -109,6 +139,26 @@ const spellKey = computed(() => displayControlKey(props.keyBindings.castSpell[0]
 .battle-hud__bar i { display: block; height: 100%; transition: width 120ms linear; }
 .battle-hud__bar--health i { background: linear-gradient(90deg, #dc6c51, #fb923c); }
 .battle-hud__bar--experience i { background: linear-gradient(90deg, #3f8c68, #6ee7b7); }
+
+.battle-hud__boss {
+  position: absolute;
+  top: max(5.1rem, calc(env(safe-area-inset-top) + 4.4rem));
+  left: 50%;
+  width: min(31rem, calc(100% - 22rem));
+  min-width: 18rem;
+  border: 1px solid rgb(216 180 254 / 0.35);
+  background: rgb(19 10 28 / 0.86);
+  padding: 0.55rem 0.7rem;
+  color: #fef3c7;
+  transform: translateX(-50%);
+}
+
+.battle-hud__boss-heading { display: flex; justify-content: space-between; font-size: 0.72rem; }
+.battle-hud__boss-heading span { color: #fda4af; font-size: 0.62rem; }
+.battle-hud__boss-bar { position: relative; height: 0.6rem; margin-top: 0.35rem; overflow: hidden; background: rgb(0 0 0 / 0.65); }
+.battle-hud__boss-bar i { display: block; height: 100%; background: linear-gradient(90deg, #c084fc, #f87171); transition: width 120ms linear; }
+.battle-hud__boss-bar b { position: absolute; top: 0; bottom: 0; width: 2px; background: #fef08a; box-shadow: 0 0 0.4rem #fef08a; }
+.battle-hud__boss small { display: block; margin-top: 0.3rem; color: #fef08a; font-size: 0.6rem; }
 
 .battle-hud__wing {
   position: absolute;
@@ -152,6 +202,34 @@ const spellKey = computed(() => displayControlKey(props.keyBindings.castSpell[0]
   align-items: center;
   gap: 0.65rem;
 }
+
+.battle-hud__spell-icon { position: relative; display: grid; place-items: center; width: 2.75rem; height: 2.75rem; border-radius: 0.4rem; }
+.battle-hud__spell-icon--ready { filter: drop-shadow(0 0 0.5rem rgb(125 211 252 / 0.6)); }
+.battle-hud__spell-mask { position: absolute; inset: 0; border-radius: 0.4rem; background: conic-gradient(rgb(8 16 13 / 0.78) var(--spell-cooldown), transparent 0); pointer-events: none; }
+.battle-hud__shield-ring { position: absolute; inset: -0.25rem; border: 2px solid #bae6fd; border-radius: 0.55rem; opacity: 0.9; transform: rotate(-90deg); clip-path: polygon(0 0, var(--shield-progress) 0, var(--shield-progress) 100%, 0 100%); pointer-events: none; }
+.battle-hud__protection { margin-top: 0.45rem; color: #bae6fd; font-size: 0.6rem; text-align: right; }
+
+.battle-hud__event {
+  position: absolute;
+  left: 50%;
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  width: min(29rem, calc(100% - 2rem));
+  border: 1px solid rgb(239 68 68 / 0.35);
+  background: rgb(28 12 16 / 0.9);
+  padding: 0.65rem 0.8rem;
+  color: #fee2e2;
+  transform: translateX(-50%);
+  backdrop-filter: blur(8px);
+}
+.battle-hud__event--fountain { border-color: rgb(103 232 249 / 0.35); background: rgb(7 30 34 / 0.9); color: #cffafe; }
+.battle-hud__event-heading { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.7rem; }
+.battle-hud__event-heading span { color: #fda4af; font-size: 0.6rem; }
+.battle-hud__event--fountain .battle-hud__event-heading span { color: #67e8f9; }
+.battle-hud__event p { margin: 0.25rem 0 0.4rem; font-size: 0.62rem; opacity: 0.8; }
+.battle-hud__event-bar { height: 0.28rem; overflow: hidden; background: rgb(0 0 0 / 0.5); }
+.battle-hud__event-bar i { display: block; height: 100%; background: linear-gradient(90deg, #ef4444, #fbbf24); transition: width 120ms linear; }
+.battle-hud__event--fountain .battle-hud__event-bar i { background: linear-gradient(90deg, #22d3ee, #a7f3d0); }
+.battle-hud__event small { display: block; margin-top: 0.3rem; color: rgb(254 226 226 / 0.7); font-size: 0.57rem; }
 
 .battle-hud__artifact strong,
 .battle-hud__artifact small,
@@ -249,5 +327,13 @@ const spellKey = computed(() => displayControlKey(props.keyBindings.castSpell[0]
     min-width: 0;
     transform: none;
   }
+
+  .battle-hud__boss {
+    top: max(4.8rem, calc(env(safe-area-inset-top) + 4rem));
+    width: calc(100% - 1.5rem);
+    min-width: 0;
+  }
+
+  .battle-hud__event { bottom: 7rem; }
 }
 </style>

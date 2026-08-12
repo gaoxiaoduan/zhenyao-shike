@@ -23,7 +23,34 @@ export interface BattleHudSnapshot {
   readonly weakestEliteHealthPercent: number | null
   readonly stageLabel: string
   readonly spellCooldownMs: number
+  readonly spellShieldRemainingMs?: number
+  readonly hitProtectionRemainingMs?: number
+  readonly pickupRadiusBoostRemainingMs?: number
+  readonly boss?: BossHudSnapshot
+  readonly battlefieldEvent?: BattlefieldEventSnapshot
   readonly artifacts: readonly RunArtifactSummary[]
+}
+
+export interface BossHudSnapshot {
+  readonly name: string
+  readonly phase: 'arrival' | 'combat' | 'enraged' | 'defeated'
+  readonly health: number
+  readonly maxHealth: number
+  readonly enragedThreshold: number
+  readonly breachRemainingMs: number
+}
+
+export type BattlefieldEventKind = 'demon-lair' | 'lingquan'
+export type BattlefieldEventPhase = 'travel' | 'battle' | 'available' | 'guiding' | 'destroyed' | 'completed' | 'expired'
+
+export interface BattlefieldEventSnapshot {
+  readonly kind: BattlefieldEventKind
+  readonly phase: BattlefieldEventPhase
+  readonly name: string
+  readonly objective: string
+  readonly remainingMs: number
+  readonly progress?: number
+  readonly reward: string
 }
 
 export interface BattleInstrumentationSnapshot {
@@ -46,6 +73,11 @@ export type GameSessionEvent =
   | { readonly type: 'ascension-requested'; readonly choices: readonly AscensionRecipe[] }
   | { readonly type: 'onboarding-step-completed'; readonly step: OnboardingStep }
   | { readonly type: 'pause-requested' }
+  | {
+      readonly type: 'battlefield-event'
+      readonly event: BattlefieldEventSnapshot
+      readonly firstEncounter: boolean
+    }
   | { readonly type: 'audio-intent'; readonly intent: AudioIntent }
   | { readonly type: 'hud-updated'; readonly snapshot: BattleHudSnapshot }
   | { readonly type: 'run-ending'; readonly result: RunResult; readonly source: DamageSource }
@@ -82,4 +114,6 @@ export interface CreateGameSessionOptions {
   readonly onInstrumentation?: (snapshot: BattleInstrumentationSnapshot) => void
   /** DEV-only deterministic placement for browser acceptance fixtures. */
   readonly deterministicAcceptance?: boolean
+  /** Starts directly at the unlocked, no-reward 妖王演练. */
+  readonly practiceMode?: boolean
 }

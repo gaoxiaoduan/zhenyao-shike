@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { shallowRef } from 'vue'
 import { createInputIntent } from '../game/domain/inputIntent'
+import ArtifactIcon from './game/ArtifactIcon.vue'
 
 interface JoystickCenter {
   readonly x: number
@@ -85,7 +86,8 @@ function castSpell() {
       type="button"
       @pointerdown.prevent="castSpell"
     >
-      玄光护身
+      <ArtifactIcon id="protective-spell" label="玄光护身诀" />
+      <span class="battle-touch-controls__spell-label">玄光</span>
     </button>
   </div>
 </template>
@@ -97,6 +99,19 @@ function castSpell() {
 
 .battle-touch-controls__thumb {
   transition: transform 35ms linear;
+}
+
+.battle-touch-controls__spell-label {
+  position: absolute;
+  bottom: 0.55rem;
+  font-size: 0.6rem;
+  letter-spacing: 0.18em;
+}
+
+.battle-touch-controls__spell :deep(.artifact-icon) {
+  width: 2.55rem;
+  height: 2.55rem;
+  border-color: rgb(186 230 253 / 0.62);
 }
 
 .battle-touch-controls {

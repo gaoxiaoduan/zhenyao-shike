@@ -22,6 +22,7 @@ export interface RunSummaryInput {
   readonly demonLairDestroyed: boolean
   readonly artifacts: readonly RunArtifactSummary[]
   readonly finalDamageSource: DamageSource
+  readonly practiceMode?: boolean
 }
 
 export interface RunSummary {
@@ -50,7 +51,7 @@ export function createRunSummary(input: RunSummaryInput): RunSummary {
     elapsedMs: input.elapsedMs,
     defeatedEnemies: input.defeatedEnemies,
     artifacts: input.artifacts,
-    spiritStones: input.defeatedElites * 2 + (input.demonLairDestroyed ? 8 : 0),
+    spiritStones: input.practiceMode ? 0 : input.defeatedElites * 2 + (input.demonLairDestroyed ? 8 : 0),
     // Only the product shell knows whether this is the first victory for the current node.
     demonCores: 0,
     demonLairDestroyed: input.demonLairDestroyed,

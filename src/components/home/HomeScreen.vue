@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import caveBackgroundUrl from '../../assets/game/qingshi-cave-home.png'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   fullscreenAvailable: boolean
-}>()
+  bossPracticeUnlocked?: boolean
+}>(), {
+  bossPracticeUnlocked: false,
+})
 
 const emit = defineEmits<{
   start: []
+  practice: []
   openSettings: []
   openControls: []
   toggleFullscreen: []
@@ -54,6 +58,16 @@ const emit = defineEmits<{
       >
         <span>入青石岭</span>
         <small>开始本次历练</small>
+      </button>
+      <button
+        v-if="props.bossPracticeUnlocked"
+        class="home-screen__practice"
+        type="button"
+        aria-label="进入妖王演练"
+        @click="emit('practice')"
+      >
+        <span>妖王演练</span>
+        <small>无奖励 · 直接熟悉啸月狼王招式</small>
       </button>
       <p class="home-screen__hint">桌面端默认窗口化 · WASD / 方向键移动 · Space / E 施放术法</p>
     </div>
@@ -230,6 +244,23 @@ const emit = defineEmits<{
 .home-screen__hint {
   margin: 0.8rem 0 0;
 }
+
+.home-screen__practice {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.75rem 0 0 0.4rem;
+  border: 1px solid rgb(192 132 252 / 0.5);
+  background: rgb(76 29 149 / 0.18);
+  padding: 0.7rem 0.9rem;
+  color: #e9d5ff;
+  text-align: left;
+}
+
+.home-screen__practice span { font-family: "STKaiti", "KaiTi", serif; font-size: 1rem; font-weight: 800; }
+.home-screen__practice small { color: rgb(233 213 255 / 0.65); font-size: 0.58rem; }
+.home-screen__practice:hover,
+.home-screen__practice:focus-visible { border-color: #e9d5ff; outline: none; }
 
 .home-screen__footer {
   border-top: 1px solid rgb(255 255 255 / 0.06);

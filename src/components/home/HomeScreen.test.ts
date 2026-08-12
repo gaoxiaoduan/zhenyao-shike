@@ -12,4 +12,10 @@ describe('HomeScreen', () => {
 
     expect(wrapper.emitted('start')).toHaveLength(1)
   })
+
+  it('shows the no-reward 妖王演练 only after it is unlocked', async () => {
+    const wrapper = mount(HomeScreen, { props: { fullscreenAvailable: true, bossPracticeUnlocked: true } })
+    await wrapper.get('button[aria-label="进入妖王演练"]').trigger('click')
+    expect(wrapper.emitted('practice')).toHaveLength(1)
+  })
 })
