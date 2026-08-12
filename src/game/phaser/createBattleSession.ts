@@ -66,7 +66,7 @@ import {
   type BaseArtifactId,
 } from '../domain/initialArtifactSelection'
 import type { OnboardingStep } from '../domain/onboardingProgress'
-import { resolvePlayerDamage, type PlayerDamageKind } from '../domain/playerDamageRules'
+import { advancePlayerDamageState, resolvePlayerDamage, type PlayerDamageKind } from '../domain/playerDamageRules'
 import {
   advanceRunProgress,
   createRunProgress,
@@ -85,9 +85,13 @@ import {
   WOLF_KING_COMBAT_SPEED,
   WOLF_KING_CONTACT_DAMAGE_PER_SECOND,
   WOLF_KING_ENRAGED_SPEED,
+  WOLF_KING_HOWL_DAMAGE,
+  WOLF_KING_HOWL_DURATION_MS,
+  WOLF_KING_HOWL_RADIUS,
+  WOLF_KING_HOWL_SAFE_GAP_HALF_ANGLE,
+  isWolfKingHowlHit,
   WOLF_KING_ENRAGED_HEALTH_RATIO,
   WOLF_KING_MOON_SHADOW_LIMIT,
-  WOLF_KING_MINION_ID,
   type WolfKingAttack,
   type WolfKingEncounter,
   type WolfKingEvent,
@@ -133,6 +137,7 @@ interface Enemy {
   speed: number
   color: number
   isLairGuard: boolean
+  isMoonShadow: boolean
   lifetimeRemainingMs: number | null
   sprite: Phaser.GameObjects.Image
 }
@@ -209,6 +214,7 @@ class QingShiRidgeScene extends Phaser.Scene {
   private graphics!: Phaser.GameObjects.Graphics
   private radarGraphics!: Phaser.GameObjects.Graphics
   private radarLabel!: Phaser.GameObjects.Text
+  private spiritNodeLabels: Phaser.GameObjects.Text[] = []
   private playerSprite!: Phaser.GameObjects.Image
   private inputIntent = createInputIntent()
   private progress: RunProgress = createRunProgress()
@@ -248,6 +254,10 @@ class QingShiRidgeScene extends Phaser.Scene {
   private boss?: WolfKingEncounter
   private bossSpatial?: BossSpatialState
   private bossHowlRemainingMs = 0
+  private bossHowlElapsedMs = 0
+  private bossHowlDirectionX = 0
+  private bossHowlDirectionY = 1
+  private bossHowlResolved = true
   private bossBreachRemainingMs = 0
   private bossAttack: WolfKingAttack = 'none'
   private bossAttackAvoidanceWindowMs = 0
@@ -274,6 +284,9 @@ class QingShiRidgeScene extends Phaser.Scene {
   private shieldBlockedFeedback = false
   private hitProtectionRemainingMs = 0
   private playerHitFlashMs = 0
+  private playerHitSparkMs = 0
+  private playerCastPoseMs = 0
+  private playerDowned = false
   private playerMotionPhase = 0
   private playerFacingX = 0
   private playerFacingY = 1
@@ -338,6 +351,14 @@ class QingShiRidgeScene extends Phaser.Scene {
       .image(this.player.x, this.player.y, 'qingshi-actors', 0)
       .setDisplaySize(84, 84)
       .setDepth(4)
+    this.spiritNodeLabels = this.terrainLayout.spiritNodes.map((node) => this.add.text(node.x, node.y + 36, '灵脉石坛', {
+      color: '#d6d3d1',
+      fontFamily: '"Noto Sans SC", sans-serif',
+      fontSize: '12px',
+      fontStyle: 'bold',
+      stroke: '#07130d',
+      strokeThickness: 4,
+    }).setOrigin(0.5, 0).setDepth(5).setVisible(false))
     this.cameras.main.setBounds(0, 0, WORLD_SIZE, WORLD_SIZE)
     this.resizeViewport(this.viewportWidth, this.viewportHeight)
     this.updateDiscoveredLandmarks()
@@ -396,14 +417,22 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.spawnElapsedMs += stepMs
     this.spellCooldownMs = Math.max(0, this.spellCooldownMs - stepMs)
     const shieldWasActive = this.shieldRemainingMs > 0
-    this.shieldRemainingMs = Math.max(0, this.shieldRemainingMs - stepMs)
+    const damageState = advancePlayerDamageState({
+      health: this.player.health,
+      maxHealth: this.player.maxHealth,
+      hitProtectionRemainingMs: this.hitProtectionRemainingMs,
+      shieldRemainingMs: this.shieldRemainingMs,
+    }, stepMs)
+    this.shieldRemainingMs = damageState.shieldRemainingMs
     if (shieldWasActive && this.shieldRemainingMs === 0) {
       this.spellEndVisualRemainingMs = 360
       this.emitAudio('spell-end')
     }
-    this.hitProtectionRemainingMs = Math.max(0, this.hitProtectionRemainingMs - stepMs)
+    this.hitProtectionRemainingMs = damageState.hitProtectionRemainingMs
     this.bossAttackAvoidanceWindowMs = Math.max(0, this.bossAttackAvoidanceWindowMs - stepMs)
     this.playerHitFlashMs = Math.max(0, this.playerHitFlashMs - stepMs)
+    this.playerHitSparkMs = Math.max(0, this.playerHitSparkMs - stepMs)
+    this.playerCastPoseMs = Math.max(0, this.playerCastPoseMs - stepMs)
     this.playerStopBounceRemainingMs = Math.max(0, this.playerStopBounceRemainingMs - stepMs)
     this.spellCastVisualRemainingMs = Math.max(0, this.spellCastVisualRemainingMs - stepMs)
     this.spellEndVisualRemainingMs = Math.max(0, this.spellEndVisualRemainingMs - stepMs)
@@ -703,6 +732,10 @@ class QingShiRidgeScene extends Phaser.Scene {
     }
     this.bossSpatial.sprite.setPosition(this.bossSpatial.x, this.bossSpatial.y)
     this.bossHowlRemainingMs = 0
+    this.bossHowlElapsedMs = 0
+    this.bossHowlDirectionX = 0
+    this.bossHowlDirectionY = 1
+    this.bossHowlResolved = true
     this.bossBreachRemainingMs = 0
     this.bossAttack = 'none'
     this.bossAttackAvoidanceWindowMs = 0
@@ -724,7 +757,11 @@ class QingShiRidgeScene extends Phaser.Scene {
       return
     }
 
+    const howlWasActive = this.bossHowlRemainingMs > 0
     this.bossHowlRemainingMs = Math.max(0, this.bossHowlRemainingMs - stepMs)
+    if (howlWasActive) {
+      this.bossHowlElapsedMs = Math.min(WOLF_KING_HOWL_DURATION_MS, this.bossHowlElapsedMs + stepMs)
+    }
     const result = advanceWolfKingEncounter(this.boss, stepMs)
     this.boss = result.encounter
     this.bossAttack = this.boss.attack
@@ -766,6 +803,10 @@ class QingShiRidgeScene extends Phaser.Scene {
         'wolf-king-contact',
       )
     }
+
+    if (howlWasActive && this.bossHowlRemainingMs === 0 && !this.bossHowlResolved) {
+      this.resolveBossHowl()
+    }
   }
 
   private handleWolfKingEvents(events: readonly WolfKingEvent[]) {
@@ -778,7 +819,14 @@ class QingShiRidgeScene extends Phaser.Scene {
         }
       } else if (event.type === 'moon-howl') {
         this.emitAudio('boss-howl')
-        this.bossHowlRemainingMs = 900
+        this.bossHowlRemainingMs = WOLF_KING_HOWL_DURATION_MS
+        this.bossHowlElapsedMs = 0
+        this.bossHowlResolved = false
+        if (this.bossSpatial) {
+          const distance = Phaser.Math.Distance.Between(this.bossSpatial.x, this.bossSpatial.y, this.player.x, this.player.y)
+          this.bossHowlDirectionX = (this.player.x - this.bossSpatial.x) / Math.max(distance, 1)
+          this.bossHowlDirectionY = (this.player.y - this.bossSpatial.y) / Math.max(distance, 1)
+        }
       } else if (event.type === 'charge-warning' || event.type === 'moon-shadow-assault-warning') {
         if (this.bossSpatial) {
           const distance = Phaser.Math.Distance.Between(this.bossSpatial.x, this.bossSpatial.y, this.player.x, this.player.y)
@@ -790,28 +838,69 @@ class QingShiRidgeScene extends Phaser.Scene {
         this.emitAudio('boss-charge-warning')
       } else if (event.type === 'charge-started' || event.type === 'moon-shadow-assault') {
         this.emitAudio('boss-charge-start')
-      } else if (event.type === 'charge-resolved') {
-        const boss = this.bossSpatial
-        const distance = boss
-          ? Phaser.Math.Distance.Between(boss.x, boss.y, this.player.x, this.player.y)
-          : Number.POSITIVE_INFINITY
-        const avoided = distance > (boss?.radius ?? 38) + 34
-        if (boss && !avoided) {
-          this.receivePlayerDamage(this.player.health - (this.boss?.phase === 'enraged' ? 32 : 24), 'wolf-king-contact', true)
-        }
-        if (!this.bossAttackResolved) {
-          const result = resolveWolfKingAttack(this.boss!, avoided)
-          this.boss = result.encounter
-          this.bossBreachRemainingMs = this.boss.breachRemainingMs
-          this.bossAttackResolved = true
-          if (result.events.some((candidate) => candidate.type === 'breach-opened')) {
-            this.emitAudio('boss-breach')
+        if (event.type === 'moon-shadow-assault') {
+          for (let index = 0; index < 3; index += 1) {
+            this.spawnWolfKingMinion()
           }
         }
+      } else if (event.type === 'charge-resolved') {
+        this.resolveBossHeavyPass(true)
+      } else if (event.type === 'moon-shadow-assault-pass-resolved') {
+        this.resolveBossHeavyPass(false)
+      } else if (event.type === 'moon-shadow-assault-rebound-warning') {
+        if (this.bossSpatial) {
+          this.bossSpatial.chargeDirectionX *= -1
+          this.bossSpatial.chargeDirectionY *= -1
+        }
+        this.bossAttackAvoidanceWindowMs = this.boss?.attackRemainingMs ?? 360
+        this.bossAttackResolved = false
+        this.emitAudio('boss-charge-warning')
       } else if (event.type === 'defeated') {
         this.emitAudio('boss-defeated')
         this.finishRun('victory')
       }
+    }
+  }
+
+  private resolveBossHeavyPass(openBreach: boolean) {
+    const boss = this.bossSpatial
+    const distance = boss
+      ? Phaser.Math.Distance.Between(boss.x, boss.y, this.player.x, this.player.y)
+      : Number.POSITIVE_INFINITY
+    const avoided = distance > (boss?.radius ?? 38) + 34
+    if (boss && !avoided) {
+      this.receivePlayerDamage(
+        this.player.health - (this.boss?.phase === 'enraged' ? 32 : 24),
+        'wolf-king-contact',
+        true,
+      )
+    }
+    if (!openBreach || this.bossAttackResolved || !this.boss) {
+      return
+    }
+    const result = resolveWolfKingAttack(this.boss, avoided)
+    this.boss = result.encounter
+    this.bossBreachRemainingMs = this.boss.breachRemainingMs
+    this.bossAttackResolved = true
+    if (result.events.some((candidate) => candidate.type === 'breach-opened')) {
+      this.emitAudio('boss-breach')
+    }
+  }
+
+  private resolveBossHowl() {
+    this.bossHowlResolved = true
+    const boss = this.bossSpatial
+    if (!boss) {
+      return
+    }
+    const distance = Phaser.Math.Distance.Between(boss.x, boss.y, this.player.x, this.player.y)
+    const playerAngle = Math.atan2(this.player.y - boss.y, this.player.x - boss.x)
+    const waveAngle = Math.atan2(this.bossHowlDirectionY, this.bossHowlDirectionX)
+    const angularDistance = Math.abs(Math.atan2(Math.sin(playerAngle - waveAngle), Math.cos(playerAngle - waveAngle)))
+    // A narrow mint-coloured sector is the safe gap; the rest of the
+    // expanding wave is a boss-heavy hit and bypasses ordinary protection.
+    if (isWolfKingHowlHit(distance, angularDistance)) {
+      this.receivePlayerDamage(this.player.health - WOLF_KING_HOWL_DAMAGE, 'moon-howl', true)
     }
   }
 
@@ -820,7 +909,7 @@ class QingShiRidgeScene extends Phaser.Scene {
       return
     }
 
-    const moonShadowCount = this.enemies.filter((enemy) => enemy.id === WOLF_KING_MINION_ID).length
+    const moonShadowCount = this.enemies.filter((enemy) => enemy.isMoonShadow).length
     if (moonShadowCount >= WOLF_KING_MOON_SHADOW_LIMIT) {
       return
     }
@@ -844,6 +933,7 @@ class QingShiRidgeScene extends Phaser.Scene {
       vulnerableMultiplier: 1,
       hitFlashMs: 0,
       isLairGuard: false,
+      isMoonShadow: true,
       lifetimeRemainingMs: 24_000,
       sprite: this.createEnemySprite('qing-shi-ridge-wood-wolf', this.bossSpatial.x, this.bossSpatial.y, stats.radius),
     })
@@ -855,6 +945,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     }
 
     this.ended = true
+    this.playerDowned = result === 'defeat'
     this.progress = endRun(this.progress)
     this.inputIntent = createInputIntent()
     this.emitSessionEvent({ type: 'run-ending', result, source: this.finalDamageSource })
@@ -921,6 +1012,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.terrainLayout.spiritNodes.forEach((node, index) => {
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, node.x, node.y) <= 260) {
         this.discoveredLandmarkIds.add(`spirit-node-${index}`)
+        this.spiritNodeLabels[index]?.setVisible(true)
       }
     })
   }
@@ -934,7 +1026,7 @@ class QingShiRidgeScene extends Phaser.Scene {
           kind: 'demon-lair',
           phase: 'travel',
           name: '妖巢暴动',
-          objective: '45 秒内前往妖巢；抵达后摧毁妖巢并击败守巢精英。',
+          objective: '45 秒内前往妖巢；抵达后有独立 60 秒战斗期，摧毁妖巢并击败守巢精英。',
           remainingMs: this.demonLair.travelRemainingMs,
           reward: '40 灵蕴 · +1 推演 · 结算 8 灵石',
         },
@@ -954,7 +1046,7 @@ class QingShiRidgeScene extends Phaser.Scene {
           kind: 'lingquan',
           phase: 'available',
           name: '灵泉涌现',
-          objective: '进入青蓝引导区域并维持两秒，恢复生命并扩大灵蕴拾取范围。',
+          objective: '45 秒内前往青蓝区域并维持两秒引导，恢复生命并扩大灵蕴拾取范围。',
           remainingMs: this.lingquanEvent.travelRemainingMs,
           reward: '恢复 35% 最大生命 · 拾取范围 ×2（30 秒）',
         },
@@ -977,6 +1069,8 @@ class QingShiRidgeScene extends Phaser.Scene {
     if (lairResult.justStarted) {
       this.spawnDemonLairGuard()
       this.emitAudio('event-alert')
+    } else if (lairResult.justExpired) {
+      this.removeDemonLairGuard()
     }
 
     const node = this.terrainLayout.spiritNodes[this.lingquanEvent.nodeIndex]
@@ -1044,6 +1138,7 @@ class QingShiRidgeScene extends Phaser.Scene {
       vulnerableMultiplier: 1,
       hitFlashMs: 0,
       isLairGuard: false,
+      isMoonShadow: false,
       lifetimeRemainingMs: null,
       sprite: this.createEnemySprite(enemyId, spawnPos.x, spawnPos.y, stats.radius),
     })
@@ -1070,9 +1165,21 @@ class QingShiRidgeScene extends Phaser.Scene {
       vulnerableMultiplier: 1,
       hitFlashMs: 0,
       isLairGuard: true,
+      isMoonShadow: false,
       lifetimeRemainingMs: null,
       sprite: this.createEnemySprite(stats.id, this.demonLair.x + 88, this.demonLair.y, stats.radius),
     })
+  }
+
+  private removeDemonLairGuard() {
+    for (let index = this.enemies.length - 1; index >= 0; index -= 1) {
+      const enemy = this.enemies[index]
+      if (!enemy?.isLairGuard) {
+        continue
+      }
+      this.releaseEnemySprite(enemy.sprite)
+      this.enemies.splice(index, 1)
+    }
   }
 
   private checkDemonLairHit(x: number, y: number, range: number, damage: number) {
@@ -1444,7 +1551,7 @@ class QingShiRidgeScene extends Phaser.Scene {
       { nextHealth, kind: damageKind },
     )
     if (result.blockedByShield) {
-      if (!this.shieldBlockedFeedback) {
+      if (damageKind === 'boss-heavy' && !this.shieldBlockedFeedback) {
         this.shieldBlockedFeedback = true
         this.spellImpactPulseRemainingMs = 260
         this.emitAudio('spell-blocked')
@@ -1464,6 +1571,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.finalDamageSource = source
     this.player.health = resolvedHealth
     this.playerHitFlashMs = 180
+    this.playerHitSparkMs = 220
     this.hitProtectionRemainingMs = result.nextState.hitProtectionRemainingMs
     this.emitAudio('player-hurt')
     if (previousHealth > this.player.maxHealth * 0.3 && this.player.health <= this.player.maxHealth * 0.3) {
@@ -1672,6 +1780,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.shieldRemainingMs = SPELL_SHIELD_DURATION_MS
     this.shieldBlockedFeedback = false
     this.spellCastVisualRemainingMs = 520
+    this.playerCastPoseMs = 520
     this.spellImpactPulseRemainingMs = 360
     this.emitAudio('spell-cast')
     this.completeOnboardingStep('cast-spell')
@@ -1698,7 +1807,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.releaseEnemySprite(enemy.sprite)
     this.enemies.splice(index, 1)
     this.defeatedEnemies += 1
-    if (enemy.id === 'qing-shi-ridge-elite-wolf') {
+    if (enemy.isElite) {
       this.defeatedElites += 1
     }
     if (enemy.isLairGuard) {
@@ -1824,8 +1933,8 @@ class QingShiRidgeScene extends Phaser.Scene {
           phase: this.demonLair.phase,
           name: '妖巢暴动',
           objective: this.demonLair.phase === 'travel'
-            ? '前往妖巢'
-            : '摧毁妖巢并击败守巢精英',
+            ? '45 秒内前往妖巢'
+            : '60 秒内摧毁妖巢并击败守巢精英',
           remainingMs: this.demonLair.phase === 'travel'
             ? this.demonLair.travelRemainingMs
             : this.demonLair.battleRemainingMs,
@@ -1839,7 +1948,7 @@ class QingShiRidgeScene extends Phaser.Scene {
             kind: 'lingquan' as const,
             phase: this.lingquanEvent.phase,
             name: '灵泉涌现',
-            objective: '进入青蓝引导区域',
+            objective: '45 秒内前往并完成两秒引导',
             remainingMs: this.lingquanEvent.travelRemainingMs,
             progress: this.lingquanEvent.guideProgressMs / this.lingquanEvent.guideDurationMs,
             reward: '恢复 35% · 拾取范围 ×2',
@@ -1923,6 +2032,9 @@ class QingShiRidgeScene extends Phaser.Scene {
     for (const [index, node] of this.terrainLayout.spiritNodes.entries()) {
       const fountainActive = this.lingquanEvent.nodeIndex === index
         && (this.lingquanEvent.phase === 'available' || this.lingquanEvent.phase === 'guiding')
+      const nodeLabel = this.spiritNodeLabels[index]
+      nodeLabel?.setText(fountainActive ? '灵泉涌现 · 引导' : '灵脉石坛')
+      nodeLabel?.setVisible(fountainActive || this.discoveredLandmarkIds.has(`spirit-node-${index}`))
       this.graphics.fillStyle(fountainActive ? 0x164e63 : 0x3f3f46, 0.95).fillRoundedRect(
         node.x - 20,
         node.y - 15,
@@ -2102,22 +2214,29 @@ class QingShiRidgeScene extends Phaser.Scene {
       this.graphics.lineStyle(isArrival ? 4 : 3, bossColor, pulse)
       this.graphics.strokeCircle(this.bossSpatial.x, this.bossSpatial.y, this.bossSpatial.radius + 12)
       if (isArrival || this.bossHowlRemainingMs > 0) {
-        const effectRadius = isArrival ? 96 : 140
-        const effectAlpha = isArrival ? pulse : this.bossHowlRemainingMs / 900
+        const howlProgress = Math.max(0, Math.min(1, this.bossHowlElapsedMs / WOLF_KING_HOWL_DURATION_MS))
+        const effectRadius = isArrival ? 96 : 24 + howlProgress * (WOLF_KING_HOWL_RADIUS - 24)
+        const effectAlpha = isArrival ? pulse : this.bossHowlRemainingMs / WOLF_KING_HOWL_DURATION_MS
         this.graphics.lineStyle(5, isArrival ? 0xf0abfc : 0xfda4af, effectAlpha)
         if (isArrival) {
           this.graphics.strokeCircle(this.bossSpatial.x, this.bossSpatial.y, effectRadius)
         } else {
-          const safeGapAngle = Math.atan2(this.player.y - this.bossSpatial.y, this.player.x - this.bossSpatial.x)
+          const safeGapAngle = Math.atan2(this.bossHowlDirectionY, this.bossHowlDirectionX)
           this.graphics.arc(
             this.bossSpatial.x,
             this.bossSpatial.y,
             effectRadius,
-            safeGapAngle + 0.48,
-            safeGapAngle + Math.PI * 2 - 0.48,
+            safeGapAngle + WOLF_KING_HOWL_SAFE_GAP_HALF_ANGLE,
+            safeGapAngle + Math.PI * 2 - WOLF_KING_HOWL_SAFE_GAP_HALF_ANGLE,
           )
           this.graphics.lineStyle(2, 0xa7f3d0, effectAlpha)
-          this.graphics.arc(this.bossSpatial.x, this.bossSpatial.y, effectRadius - 12, safeGapAngle - 0.34, safeGapAngle + 0.34)
+          this.graphics.arc(
+            this.bossSpatial.x,
+            this.bossSpatial.y,
+            effectRadius - 12,
+            safeGapAngle - WOLF_KING_HOWL_SAFE_GAP_HALF_ANGLE + 0.14,
+            safeGapAngle + WOLF_KING_HOWL_SAFE_GAP_HALF_ANGLE - 0.14,
+          )
         }
       }
       if (this.bossAttack === 'charge-warning' || this.bossAttack === 'assault-warning') {
@@ -2185,25 +2304,90 @@ class QingShiRidgeScene extends Phaser.Scene {
       this.graphics.lineBetween(this.player.x, this.player.y - radius, this.player.x, this.player.y + radius)
     }
 
-    // Render player status beneath the authored sprite.
+    // Render the player as a small pose state machine. The base atlas frame is
+    // deliberately kept crisp; directional bob, cast lean, hit recoil and
+    // downed posture are layered around it so the character still reads in a
+    // crowded battlefield and in reduced-motion mode.
     const isMoving = this.inputIntent.moveX !== 0 || this.inputIntent.moveY !== 0
+    const playerPose = this.playerDowned
+      ? 'downed'
+      : this.playerHitFlashMs > 0
+        ? 'hit'
+        : this.playerCastPoseMs > 0
+          ? 'cast'
+          : isMoving
+            ? 'walk'
+            : 'idle'
     const walkBob = isMoving && !this.reducedMotion ? Math.sin(this.playerMotionPhase) * 3 : 0
     const stopBounce = this.playerStopBounceRemainingMs > 0 && !this.reducedMotion
       ? Math.sin((1 - this.playerStopBounceRemainingMs / 180) * Math.PI) * 4
       : 0
-    const bob = walkBob + stopBounce
-    const squash = isMoving && !this.reducedMotion ? 1 + Math.sin(this.playerMotionPhase * 2) * 0.035 : 1
+    const bob = playerPose === 'downed' ? 10 : walkBob + stopBounce
+    const squash = playerPose === 'walk' && !this.reducedMotion
+      ? 1 + Math.sin(this.playerMotionPhase * 2) * 0.035
+      : playerPose === 'cast'
+        ? 1.06
+        : 1
+    const poseAngle = playerPose === 'downed'
+      ? 78
+      : playerPose === 'hit'
+        ? (this.playerFacingX < 0 ? -10 : 10)
+        : playerPose === 'cast'
+          ? this.playerFacingX * 7
+          : isMoving
+            ? this.playerFacingX * this.playerFacingY * 2
+            : 0
+    const poseAlpha = playerPose === 'downed' ? 0.66 : 1
     this.playerSprite
       .setPosition(this.player.x, this.player.y - bob)
       .setFlipX(this.playerFacingX < -0.1)
-      .setAngle(isMoving ? this.playerFacingX * this.playerFacingY * 2 : 0)
-      .setScale(squash, 1 - (squash - 1) * 0.6)
+      .setAngle(poseAngle)
+      .setAlpha(poseAlpha)
+      .setDisplaySize(84 * squash, 84 * (1 - (squash - 1) * 0.6))
     if (this.playerHitFlashMs > 0) {
       this.playerSprite.setTint(0xffffff)
     } else if (this.shieldRemainingMs > 0) {
       this.playerSprite.setTint(0xdff8ff)
     } else {
       this.playerSprite.clearTint()
+    }
+    if (playerPose === 'walk' || playerPose === 'cast') {
+      const facingLength = playerPose === 'cast' ? 34 : 24
+      const tailX = this.player.x - this.playerFacingX * facingLength
+      const tailY = this.player.y - this.playerFacingY * facingLength + 18
+      this.graphics.lineStyle(playerPose === 'cast' ? 4 : 3, playerPose === 'cast' ? 0xbae6fd : 0xc49a63, 0.72)
+      this.graphics.lineBetween(this.player.x, this.player.y + 13, tailX, tailY)
+      this.graphics.fillStyle(playerPose === 'cast' ? 0x67e8f9 : 0xd6b96d, 0.72)
+      this.graphics.fillTriangle(
+        tailX,
+        tailY,
+        tailX - this.playerFacingY * 7,
+        tailY + this.playerFacingX * 7,
+        tailX + this.playerFacingY * 7,
+        tailY - this.playerFacingX * 7,
+      )
+    }
+    if (this.playerHitSparkMs > 0) {
+      const sparkProgress = 1 - this.playerHitSparkMs / 220
+      const sparkAlpha = Math.max(0, 1 - sparkProgress)
+      this.graphics.lineStyle(2, 0xfef3c7, sparkAlpha)
+      for (let index = 0; index < 6; index += 1) {
+        const angle = index * Math.PI / 3 + this.playerMotionPhase * 0.04
+        const inner = 28 + sparkProgress * 4
+        const outer = inner + 10 + sparkProgress * 12
+        this.graphics.lineBetween(
+          this.player.x + Math.cos(angle) * inner,
+          this.player.y + Math.sin(angle) * inner,
+          this.player.x + Math.cos(angle) * outer,
+          this.player.y + Math.sin(angle) * outer,
+        )
+      }
+    }
+    if (playerPose === 'downed') {
+      this.graphics.lineStyle(4, 0xfda4af, 0.72).strokeCircle(this.player.x, this.player.y, 44)
+      this.graphics.lineStyle(2, 0xfef3c7, 0.6)
+      this.graphics.lineBetween(this.player.x - 18, this.player.y - 18, this.player.x + 18, this.player.y + 18)
+      this.graphics.lineBetween(this.player.x + 18, this.player.y - 18, this.player.x - 18, this.player.y + 18)
     }
     if (isMoving) {
       this.graphics.fillStyle(0xd6b96d, 0.3).fillEllipse(this.player.x - 10, this.player.y + 26, 12, 5)

@@ -2,6 +2,13 @@
 import { shallowRef } from 'vue'
 import { createInputIntent } from '../game/domain/inputIntent'
 import ArtifactIcon from './game/ArtifactIcon.vue'
+import type { BattleHudSnapshot } from '../game/session/GameSession'
+
+const props = withDefaults(defineProps<{
+  snapshot?: BattleHudSnapshot | null
+}>(), {
+  snapshot: null,
+})
 
 interface JoystickCenter {
   readonly x: number
@@ -86,8 +93,18 @@ function castSpell() {
       type="button"
       @pointerdown.prevent="castSpell"
     >
-      <ArtifactIcon id="protective-spell" label="玄光护身诀" />
-      <span class="battle-touch-controls__spell-label">玄光</span>
+      <div
+        class="battle-touch-controls__spell-icon"
+        :class="{ 'battle-touch-controls__spell-icon--ready': !props.snapshot?.spellCooldownMs }"
+        :style="{ '--spell-cooldown': `${Math.max(0, Math.min(1, (props.snapshot?.spellCooldownMs ?? 0) / 10_000)) * 100}%`, '--shield-progress': `${Math.max(0, Math.min(1, (props.snapshot?.spellShieldRemainingMs ?? 0) / 1_500)) * 100}%` }"
+      >
+        <ArtifactIcon id="protective-spell" label="玄光护身诀" />
+        <span v-if="props.snapshot?.spellCooldownMs" class="battle-touch-controls__spell-mask" aria-hidden="true" />
+        <span v-if="props.snapshot?.spellShieldRemainingMs" class="battle-touch-controls__shield-ring" aria-hidden="true" />
+      </div>
+      <span class="battle-touch-controls__spell-label">
+        {{ props.snapshot?.spellShieldRemainingMs ? `护盾 ${Math.ceil(props.snapshot.spellShieldRemainingMs / 100) / 10}s` : props.snapshot?.spellCooldownMs ? `${Math.ceil(props.snapshot.spellCooldownMs / 1000)} 秒` : '玄光' }}
+      </span>
     </button>
   </div>
 </template>
@@ -106,6 +123,38 @@ function castSpell() {
   bottom: 0.55rem;
   font-size: 0.6rem;
   letter-spacing: 0.18em;
+}
+
+.battle-touch-controls__spell-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 2.8rem;
+  height: 2.8rem;
+  border-radius: 0.45rem;
+}
+
+.battle-touch-controls__spell-icon--ready {
+  filter: drop-shadow(0 0 0.5rem rgb(125 211 252 / 0.62));
+}
+
+.battle-touch-controls__spell-mask {
+  position: absolute;
+  inset: 0;
+  border-radius: 0.45rem;
+  background: conic-gradient(rgb(8 16 13 / 0.78) var(--spell-cooldown), transparent 0);
+  pointer-events: none;
+}
+
+.battle-touch-controls__shield-ring {
+  position: absolute;
+  inset: -0.25rem;
+  border: 2px solid #bae6fd;
+  border-radius: 0.55rem;
+  opacity: 0.9;
+  transform: rotate(-90deg);
+  clip-path: polygon(0 0, var(--shield-progress) 0, var(--shield-progress) 100%, 0 100%);
+  pointer-events: none;
 }
 
 .battle-touch-controls__spell :deep(.artifact-icon) {

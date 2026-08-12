@@ -83,9 +83,10 @@ export function advanceLingquanEvent(
 
   if (!input.withinGuideArea) {
     const guideProgressMs = Math.max(0, state.guideProgressMs - deltaMs * 0.15)
-    const nextTravel = state.phase === 'guiding'
-      ? state.travelRemainingMs
-      : Math.max(0, state.travelRemainingMs - deltaMs)
+    // The 45 second window remains a real event deadline even after the
+    // player starts guiding. Leaving the spring only slows the channel; it
+    // must not freeze the decision timer indefinitely.
+    const nextTravel = Math.max(0, state.travelRemainingMs - deltaMs)
     if (nextTravel === 0 && guideProgressMs < state.guideDurationMs) {
       return {
         nextState: { ...state, phase: 'expired', guideProgressMs, travelRemainingMs: 0 },
@@ -94,23 +95,40 @@ export function advanceLingquanEvent(
       }
     }
     return {
-      nextState: { ...state, phase: 'available', guideProgressMs, travelRemainingMs: nextTravel },
+      nextState: {
+        ...state,
+        phase: state.phase === 'guiding' ? 'guiding' : 'available',
+        guideProgressMs,
+        travelRemainingMs: nextTravel,
+      },
       justCompleted: false,
       justExpired: false,
     }
   }
 
   const guideProgressMs = Math.min(state.guideDurationMs, state.guideProgressMs + deltaMs)
+  const travelRemainingMs = Math.max(0, state.travelRemainingMs - deltaMs)
+  // The channel can only complete while the event window is still open. A
+  // single frame may straddle the deadline, so check the deadline before the
+  // progress threshold rather than allowing a late completion.
+  if (travelRemainingMs === 0) {
+    return {
+      nextState: { ...state, phase: 'expired', guideProgressMs, travelRemainingMs: 0 },
+      justCompleted: false,
+      justExpired: true,
+    }
+  }
+
   if (guideProgressMs >= state.guideDurationMs) {
     return {
-      nextState: { ...state, phase: 'completed', guideProgressMs },
+      nextState: { ...state, phase: 'completed', guideProgressMs, travelRemainingMs },
       justCompleted: true,
       justExpired: false,
     }
   }
 
   return {
-    nextState: { ...state, phase: 'guiding', guideProgressMs },
+    nextState: { ...state, phase: 'guiding', guideProgressMs, travelRemainingMs },
     justCompleted: false,
     justExpired: false,
   }
@@ -218,7 +236,10 @@ export function damageDemonLair(
   readonly spiritReward: number
   readonly bonusDeduction: number
 } {
-  if (!state.active || state.destroyed) {
+  // Damage is only legal after the player reaches the lair and the separate
+  // 60 second battle window starts. Keeping this boundary in the domain
+  // prevents callers from accidentally skipping the travel phase.
+  if (!state.active || state.destroyed || state.phase !== 'battle') {
     return {
       nextState: state,
       justDestroyed: false,

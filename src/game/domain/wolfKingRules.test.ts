@@ -10,6 +10,12 @@ import {
   WOLF_KING_BREACH_DAMAGE_MULTIPLIER,
   WOLF_KING_BREACH_DURATION_MS,
   resolveWolfKingAttack,
+  WOLF_KING_ASSAULT_PASSES,
+  WOLF_KING_ASSAULT_WARNING_MS,
+  WOLF_KING_ASSAULT_DURATION_MS,
+  WOLF_KING_HOWL_RADIUS,
+  WOLF_KING_HOWL_SAFE_GAP_HALF_ANGLE,
+  isWolfKingHowlHit,
 } from './wolfKingRules'
 
 describe('啸月狼王决战规则', () => {
@@ -83,6 +89,32 @@ describe('啸月狼王决战规则', () => {
 
     const damaged = damageWolfKing(resolved.encounter, 100)
     expect(damaged.encounter.health).toBe(combat.health - 125)
+  })
+
+  it('狂月突袭会在同一招内连续折返三次', () => {
+    const combat = damageWolfKing(
+      advanceWolfKingEncounter(createWolfKingEncounter(), WOLF_KING_INTRO_DURATION_MS).encounter,
+      WOLF_KING_MAX_HEALTH * 0.5,
+    ).encounter
+    const warning = advanceWolfKingEncounter(
+      combat,
+      combat.attackCooldownMs,
+    )
+    expect(warning.encounter.assaultPassesRemaining).toBe(WOLF_KING_ASSAULT_PASSES)
+    const first = advanceWolfKingEncounter(warning.encounter, WOLF_KING_ASSAULT_WARNING_MS)
+    expect(first.events).toContainEqual({ type: 'moon-shadow-assault' })
+    const rebound = advanceWolfKingEncounter(first.encounter, WOLF_KING_ASSAULT_DURATION_MS)
+    expect(rebound.events).toContainEqual({ type: 'moon-shadow-assault-pass-resolved' })
+    expect(rebound.events).toContainEqual({ type: 'moon-shadow-assault-rebound-warning' })
+    expect(rebound.encounter.assaultPassesRemaining).toBe(WOLF_KING_ASSAULT_PASSES - 1)
+  })
+
+  it('月啸的安全缺口和可见波纹使用同一套边界常量', () => {
+    expect(WOLF_KING_HOWL_RADIUS).toBe(140)
+    expect(WOLF_KING_HOWL_SAFE_GAP_HALF_ANGLE).toBe(0.48)
+    expect(isWolfKingHowlHit(100, 0.2)).toBe(false)
+    expect(isWolfKingHowlHit(100, 0.6)).toBe(true)
+    expect(isWolfKingHowlHit(141, 0.6)).toBe(false)
   })
 
   it('为妖王提供独立的月影狼召唤物数值', () => {

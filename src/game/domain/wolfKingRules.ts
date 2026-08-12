@@ -17,11 +17,17 @@ export const WOLF_KING_CHARGE_WARNING_MS = 900
 export const WOLF_KING_CHARGE_DURATION_MS = 650
 export const WOLF_KING_ASSAULT_WARNING_MS = 1_000
 export const WOLF_KING_ASSAULT_DURATION_MS = 700
+export const WOLF_KING_ASSAULT_REBOUND_WARNING_MS = 360
+export const WOLF_KING_ASSAULT_PASSES = 3
 export const WOLF_KING_ATTACK_INTERVAL_MS = 6_500
 export const WOLF_KING_ENRAGED_ATTACK_INTERVAL_MS = 4_800
 export const WOLF_KING_BREACH_DURATION_MS = 1_800
 export const WOLF_KING_BREACH_DAMAGE_MULTIPLIER = 1.25
 export const WOLF_KING_MOON_SHADOW_LIMIT = 8
+export const WOLF_KING_HOWL_DURATION_MS = 900
+export const WOLF_KING_HOWL_RADIUS = 140
+export const WOLF_KING_HOWL_SAFE_GAP_HALF_ANGLE = 0.48
+export const WOLF_KING_HOWL_DAMAGE = 22
 
 export type WolfKingAttack =
   | 'none'
@@ -52,6 +58,8 @@ export interface WolfKingEncounter {
   readonly attackRemainingMs: number
   readonly attackCooldownMs: number
   readonly breachRemainingMs: number
+  /** Remaining passes in the current 狂月折返突袭, including the active pass. */
+  readonly assaultPassesRemaining: number
 }
 
 export type WolfKingEvent =
@@ -63,6 +71,8 @@ export type WolfKingEvent =
   | { readonly type: 'charge-resolved' }
   | { readonly type: 'moon-shadow-assault-warning' }
   | { readonly type: 'moon-shadow-assault' }
+  | { readonly type: 'moon-shadow-assault-pass-resolved' }
+  | { readonly type: 'moon-shadow-assault-rebound-warning' }
   | { readonly type: 'breach-opened' }
   | { readonly type: 'moon-howl' }
   | { readonly type: 'defeated' }
@@ -70,6 +80,13 @@ export type WolfKingEvent =
 export interface WolfKingEncounterResult {
   readonly encounter: WolfKingEncounter
   readonly events: readonly WolfKingEvent[]
+}
+
+/** Returns whether a player point is inside the visible, unsafe part of 月啸. */
+export function isWolfKingHowlHit(distance: number, angularDistance: number): boolean {
+  return distance >= 0
+    && distance <= WOLF_KING_HOWL_RADIUS
+    && Math.abs(angularDistance) > WOLF_KING_HOWL_SAFE_GAP_HALF_ANGLE
 }
 
 export function createWolfKingEncounter(): WolfKingEncounter {
@@ -85,6 +102,7 @@ export function createWolfKingEncounter(): WolfKingEncounter {
     attackRemainingMs: 0,
     attackCooldownMs: WOLF_KING_ATTACK_INTERVAL_MS,
     breachRemainingMs: 0,
+    assaultPassesRemaining: 0,
   }
 }
 
@@ -125,6 +143,7 @@ export function advanceWolfKingEncounter(
       attackRemainingMs: 0,
       attackCooldownMs: WOLF_KING_ATTACK_INTERVAL_MS,
       breachRemainingMs: 0,
+      assaultPassesRemaining: 0,
     }
     const combatResult = advanceWolfKingEncounter(combatEncounter, -introRemainingMs)
     return {
@@ -147,6 +166,7 @@ export function advanceWolfKingEncounter(
   let attack = encounter.attack
   let attackRemainingMs = Math.max(0, encounter.attackRemainingMs - deltaMs)
   let breachRemainingMs = Math.max(0, encounter.breachRemainingMs - deltaMs)
+  let assaultPassesRemaining = encounter.assaultPassesRemaining
   const events: WolfKingEvent[] = []
   const summonCount = encounter.phase === 'enraged' ? 3 : 2
 
@@ -168,6 +188,7 @@ export function advanceWolfKingEncounter(
     attackRemainingMs = encounter.phase === 'enraged'
       ? WOLF_KING_ASSAULT_WARNING_MS
       : WOLF_KING_CHARGE_WARNING_MS
+    assaultPassesRemaining = encounter.phase === 'enraged' ? WOLF_KING_ASSAULT_PASSES : 0
     attackCooldownMs = encounter.phase === 'enraged'
       ? WOLF_KING_ENRAGED_ATTACK_INTERVAL_MS
       : WOLF_KING_ATTACK_INTERVAL_MS
@@ -186,8 +207,19 @@ export function advanceWolfKingEncounter(
     attackRemainingMs = WOLF_KING_ASSAULT_DURATION_MS
     events.push({ type: 'moon-shadow-assault' })
   } else if (attack === 'assault' && attackRemainingMs === 0) {
-    attack = 'none'
-    events.push({ type: 'charge-resolved' })
+    if (assaultPassesRemaining > 1) {
+      assaultPassesRemaining -= 1
+      attack = 'assault-warning'
+      attackRemainingMs = WOLF_KING_ASSAULT_REBOUND_WARNING_MS
+      events.push(
+        { type: 'moon-shadow-assault-pass-resolved' },
+        { type: 'moon-shadow-assault-rebound-warning' },
+      )
+    } else {
+      assaultPassesRemaining = 0
+      attack = 'none'
+      events.push({ type: 'charge-resolved' })
+    }
   }
 
   return {
@@ -200,6 +232,7 @@ export function advanceWolfKingEncounter(
       attackRemainingMs,
       attackCooldownMs,
       breachRemainingMs,
+      assaultPassesRemaining,
     },
     events,
   }

@@ -22,6 +22,21 @@ test('boots the real battlefield on a 1280 by 720 desktop', async ({ page }) => 
   await expect(page.getByRole('dialog', { name: '选择初始法器' })).toBeVisible()
 })
 
+test('unlocked 妖王演练 enters the boss directly without the mainline onboarding', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('zhenyao-shike.boss-practice.v1', 'unlocked')
+  })
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto('/')
+
+  await page.getByRole('button', { name: '进入妖王演练' }).click()
+  await expect(page.getByRole('dialog', { name: '选择初始法器' })).toBeVisible()
+  await page.keyboard.press('1')
+  await expect(page.getByLabel('战斗信息')).toContainText('啸月狼王')
+  await expect(page.getByLabel('战斗信息')).toContainText('30000')
+  await expect(page.getByText('请先完成新手引导')).toHaveCount(0)
+})
+
 test('selects cards with number keys and exposes the full-world battle radar', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 })
   await page.goto('/?e2e-time=30')

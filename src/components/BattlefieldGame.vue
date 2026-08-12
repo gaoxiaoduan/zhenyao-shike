@@ -472,7 +472,7 @@ onUnmounted(() => {
       </button>
     </div>
 
-    <BattleTouchControls @cast="castSpell" @move="setTouchIntent" />
+    <BattleTouchControls :snapshot="hudSnapshot" @cast="castSpell" @move="setTouchIntent" />
     <BattleHud :snapshot="hudSnapshot" :key-bindings="settings.keyBindings" />
 
     <div v-if="endingNotice" class="battlefield__ending" role="status" aria-live="assertive">
@@ -490,6 +490,9 @@ onUnmounted(() => {
         <p class="text-xs font-bold tracking-[0.32em] text-cyan-100/70">战场事件</p>
         <h2 class="mt-3 font-serif text-3xl font-bold text-cyan-50">{{ eventNotice.name }}</h2>
         <p class="mt-4 text-sm leading-7 text-stone-200">{{ eventNotice.objective }}</p>
+        <p class="mt-3 text-xs font-bold tracking-[0.12em] text-cyan-100/75">
+          当前期限：{{ Math.ceil(eventNotice.remainingMs / 1000) }} 秒
+        </p>
         <p class="mt-3 border-l-2 border-amber-200/60 pl-3 text-sm leading-6 text-amber-100/85">奖励：{{ eventNotice.reward }}</p>
         <button class="game-button mt-7 w-full" type="button" @click="resumeEventNotice">记住规则，继续历练</button>
       </div>

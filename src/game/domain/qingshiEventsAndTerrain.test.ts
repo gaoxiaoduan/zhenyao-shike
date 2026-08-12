@@ -42,6 +42,7 @@ describe('青石岭随机战场与妖巢暴动事件规则', () => {
   it('击毁妖巢提供高额灵蕴与 +1 推演次数奖励', () => {
     let lair = createDemonLairState()
     lair = updateDemonLairTrigger(lair, DEMON_LAIR_TRIGGER_TIME_MS)
+    lair = advanceDemonLairEvent(lair, 16, true).nextState
 
     const partialDamage = damageDemonLair(lair, 100)
     expect(partialDamage.justDestroyed).toBe(false)
@@ -97,5 +98,39 @@ describe('青石岭随机战场与妖巢暴动事件规则', () => {
     expect(completed.justCompleted).toBe(true)
     expect(completed.nextState.phase).toBe('completed')
     expect(advanceLingquanEvent(completed.nextState, { deltaMs: 5_000, withinGuideArea: true }).justCompleted).toBe(false)
+  })
+
+  it('灵泉在开始引导后仍继续消耗四十五秒期限', () => {
+    let fountain = updateLingquanTrigger(createLingquanEventState(), LINGQUAN_TRIGGER_TIME_MS)
+    fountain = advanceLingquanEvent(fountain, { deltaMs: 1_000, withinGuideArea: true }).nextState
+    expect(fountain.phase).toBe('guiding')
+    const left = advanceLingquanEvent(fountain, { deltaMs: 1_000, withinGuideArea: false }).nextState
+    expect(left.phase).toBe('guiding')
+    expect(left.travelRemainingMs).toBe(fountain.travelRemainingMs - 1_000)
+  })
+
+  it('灵泉期限内无法完成引导时会失效', () => {
+    let fountain = updateLingquanTrigger(createLingquanEventState(), LINGQUAN_TRIGGER_TIME_MS)
+    fountain = advanceLingquanEvent(fountain, { deltaMs: 44_500, withinGuideArea: false }).nextState
+    const expired = advanceLingquanEvent(fountain, { deltaMs: 500, withinGuideArea: true })
+    expect(expired.justExpired).toBe(true)
+    expect(expired.nextState.phase).toBe('expired')
+  })
+
+  it('跨过最后一帧期限时不会把灵泉误判为完成', () => {
+    let fountain = updateLingquanTrigger(createLingquanEventState(), LINGQUAN_TRIGGER_TIME_MS)
+    fountain = advanceLingquanEvent(fountain, { deltaMs: 43_000, withinGuideArea: false }).nextState
+    fountain = advanceLingquanEvent(fountain, { deltaMs: 1_900, withinGuideArea: true }).nextState
+    const result = advanceLingquanEvent(fountain, { deltaMs: 500, withinGuideArea: true })
+    expect(result.justCompleted).toBe(false)
+    expect(result.justExpired).toBe(true)
+    expect(result.nextState.phase).toBe('expired')
+  })
+
+  it('抵达妖巢前不会受到伤害', () => {
+    let lair = updateDemonLairTrigger(createDemonLairState(), DEMON_LAIR_TRIGGER_TIME_MS)
+    const result = damageDemonLair(lair, 999)
+    expect(result.justDestroyed).toBe(false)
+    expect(result.nextState.health).toBe(lair.health)
   })
 })
