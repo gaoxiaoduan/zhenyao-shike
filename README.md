@@ -1,5 +1,34 @@
-# Vue 3 + TypeScript + Vite
+# 镇妖十刻
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+《镇妖十刻》是一个凡人修仙主题的原创像素生存构筑游戏。当前公开版本是青石岭核心玩法切片 `v0.1.0`。
 
-Learn more about the recommended Project Setup and IDE Support in the [Vue Docs TypeScript Guide](https://vuejs.org/guide/typescript/overview.html#project-setup).
+试玩地址：<https://zhenyao.33338888.xyz>
+
+## 本地开发
+
+```bash
+pnpm install
+pnpm dev
+```
+
+验证构建和测试：
+
+```bash
+pnpm typecheck
+pnpm test:run
+pnpm test:e2e
+```
+
+## Cloudflare 部署
+
+项目使用 Cloudflare Workers Static Assets，不使用 Pages。发布前先执行：
+
+```bash
+pnpm run deploy:dry-run
+pnpm run deploy
+```
+
+Wrangler 配置位于 `wrangler.jsonc`，生产 Custom Domain 为
+`zhenyao.33338888.xyz`。首次部署前需要在 Cloudflare 账户中完成 Wrangler 登录。
+
+当前版本的游戏状态和设置保存在浏览器本地，不提供登录、云存档或玩法统计。

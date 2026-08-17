@@ -1,7 +1,7 @@
 {
   "name": "game-phaser",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,6 +10,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:e2e": "playwright test",
+    "deploy": "pnpm build && wrangler deploy",
+    "deploy:dry-run": "pnpm build && wrangler deploy --dry-run",
     "typecheck": "vue-tsc -b"
   },
   "dependencies": {
@@ -17,6 +19,7 @@
     "vue": "^3.5.40"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.52.1",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.13.3",
@@ -28,6 +31,7 @@
     "typescript": "~6.0.2",
     "vite": "^8.2.0",
     "vitest": "^4.1.10",
-    "vue-tsc": "^3.3.8"
+    "vue-tsc": "^3.3.8",
+    "wrangler": "^4.123.0"
   }
 }
