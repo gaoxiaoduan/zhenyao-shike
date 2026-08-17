@@ -160,4 +160,15 @@ describe('BattlefieldGame input adapter', () => {
     expect(battleHarness.session.confirmOrientation).toHaveBeenCalledOnce()
     wrapper.unmount()
   })
+
+  it('pauses immediately when mounted while the page is already hidden', () => {
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+    const wrapper = mount(BattlefieldGame, {
+      props: { settings: DEFAULT_GAME_SETTINGS, showOnboarding: false },
+    })
+
+    expect(battleHarness.session.setPageVisible).toHaveBeenCalledWith(false)
+    wrapper.unmount()
+    hidden.mockRestore()
+  })
 })

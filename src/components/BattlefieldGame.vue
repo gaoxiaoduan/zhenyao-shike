@@ -365,6 +365,7 @@ onMounted(() => {
   document.addEventListener('visibilitychange', syncVisibility)
   desktopMedia.addEventListener('change', syncViewport)
   syncViewport()
+  syncVisibility()
 })
 
 onUnmounted(() => {
