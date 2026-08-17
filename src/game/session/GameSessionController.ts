@@ -56,12 +56,23 @@ function freezeDecision(decision: GameSessionDecision): GameSessionDecision {
   if (decision.type === 'ascension') {
     return Object.freeze({
       ...decision,
-      choices: Object.freeze(decision.choices.map((choice) => Object.freeze({ ...choice }))),
+      choices: Object.freeze(decision.choices.map((choice) => Object.freeze({
+        ...choice,
+        sourceIds: Object.freeze([...choice.sourceIds]) as typeof choice.sourceIds,
+        sourceNames: Object.freeze([...choice.sourceNames]) as typeof choice.sourceNames,
+      }))),
     })
   }
   return Object.freeze({
     ...decision,
     event: Object.freeze({ ...decision.event }),
+  })
+}
+
+function freezeRunSummary(summary: Extract<GameSessionResult, { state: 'ended' }>['summary']) {
+  return Object.freeze({
+    ...summary,
+    artifacts: Object.freeze(summary.artifacts.map((artifact) => Object.freeze({ ...artifact }))),
   })
 }
 
@@ -199,14 +210,14 @@ export function createGameSessionController(
     reason: PlatformPauseReason | 'manual' | 'decision',
     active: boolean,
     clearInput = false,
-  ) {
+  ): boolean {
     if (disposed || lifecycle !== 'active') {
-      return
+      return false
     }
 
     if (active) {
       if (pauseReasons.has(reason)) {
-        return
+        return false
       }
       if (clearInput) {
         clearMovementIntent()
@@ -214,12 +225,13 @@ export function createGameSessionController(
       pauseReasons.add(reason)
     } else {
       if (!pauseReasons.delete(reason)) {
-        return
+        return false
       }
     }
 
     syncPauseState()
     publish()
+    return true
   }
 
   function beginDecision(nextDecision: GameSessionDecision) {
@@ -253,9 +265,13 @@ export function createGameSessionController(
       transactionDepth -= 1
     }
     if (!decision) {
-      setPauseReason('decision', false)
+      const pauseReleased = setPauseReason('decision', false)
+      if (!pauseReleased) {
+        publish()
+      }
+    } else {
+      publish()
     }
-    publish()
     flushPendingPublish()
   }
 
@@ -338,7 +354,7 @@ export function createGameSessionController(
     }
 
     lifecycle = 'ended'
-    result = Object.freeze({ state: 'ended', summary: output.summary })
+    result = Object.freeze({ state: 'ended', summary: freezeRunSummary(output.summary) })
     decision = null
     pauseReasons.clear()
     if (!paused) {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createInputIntent } from '../domain/inputIntent'
 import { createInitialArtifactSelection } from '../domain/initialArtifactSelection'
+import type { UpgradeDraftChoice } from '../domain/artifactInventory'
 import type { AudioIntent } from '../audio/audioDirector'
 import type { BattleRuntimeOutput, GameSessionEffect, GameSessionSnapshot } from './GameSession'
 import { createGameSessionController, type BattleRuntime } from './GameSessionController'
@@ -85,11 +86,13 @@ describe('一局会话 external seam', () => {
       throw new Error('expected initial artifact decision')
     }
 
+    const snapshotsBeforeSelection = snapshots.length
     session.selectInitialArtifact(decision.id, candidates[0]!.id)
     session.selectInitialArtifact(decision.id, candidates[0]!.id)
 
     expect(runtime.selectInitialArtifact).toHaveBeenCalledTimes(1)
     expect(runtime.selectInitialArtifact).toHaveBeenCalledWith(candidates[0]!.id)
+    expect(snapshots).toHaveLength(snapshotsBeforeSelection + 1)
     expect(snapshots.at(-1)?.decision).toBeNull()
   })
 
@@ -130,12 +133,57 @@ describe('一局会话 external seam', () => {
     if (!ascension || ascension.type !== 'ascension') {
       throw new Error('expected ascension decision')
     }
+    expect(Object.isFrozen(ascension.choices[0]!.sourceIds)).toBe(true)
+    expect(Object.isFrozen(ascension.choices[0]!.sourceNames)).toBe(true)
     created.session.selectAscension(ascension.id, 'ascend-qing-feng-si-xiang')
 
     expect(runtime.setPaused).toHaveBeenCalledTimes(2)
     expect(runtime.setPaused).toHaveBeenNthCalledWith(1, true)
     expect(runtime.setPaused).toHaveBeenNthCalledWith(2, false)
     expect(runtime.setInputIntent).toHaveBeenLastCalledWith(intent)
+  })
+
+  it('在当前升级决策内处理推演，吐纳和周天运转只应用一次', () => {
+    const runtime = createRuntime()
+    let reportRuntimeOutput: (output: BattleRuntimeOutput) => void = () => undefined
+    vi.mocked(runtime.deduceUpgrade).mockImplementation(() => {
+      reportRuntimeOutput({
+        ...upgradeOutput,
+        choices: [{
+          ...(upgradeOutput.choices[0]! as UpgradeDraftChoice),
+          choiceId: 'upgrade-after-deduction',
+        } as UpgradeDraftChoice],
+        deductionCount: 0,
+        canDeduce: false,
+      })
+    })
+    const created = createSession(runtime)
+    reportRuntimeOutput = created.reportRuntimeOutput
+    reportRuntimeOutput(upgradeOutput)
+    const upgrade = created.snapshots.at(-1)?.decision
+    if (!upgrade || upgrade.type !== 'upgrade') {
+      throw new Error('expected upgrade decision')
+    }
+
+    created.session.deduceUpgrade(upgrade.id)
+    const afterDeduction = created.snapshots.at(-1)?.decision
+    expect(afterDeduction?.type).toBe('upgrade')
+    expect(runtime.deduceUpgrade).toHaveBeenCalledOnce()
+
+    if (!afterDeduction || afterDeduction.type !== 'upgrade') {
+      throw new Error('expected upgrade after deduction')
+    }
+    created.session.tunaHeal(afterDeduction.id)
+    created.session.tunaHeal(afterDeduction.id)
+    expect(runtime.tunaHeal).toHaveBeenCalledOnce()
+
+    reportRuntimeOutput({ ...upgradeOutput, isZhouTian: true, canDeduce: false })
+    const zhouTian = created.snapshots.at(-1)?.decision
+    if (!zhouTian || zhouTian.type !== 'upgrade') {
+      throw new Error('expected Zhou Tian decision')
+    }
+    created.session.deduceUpgrade(zhouTian.id)
+    expect(runtime.deduceUpgrade).toHaveBeenCalledOnce()
   })
 
   it('拒绝过期、错配和重复命令，不污染当前 snapshot 或 runtime', () => {
