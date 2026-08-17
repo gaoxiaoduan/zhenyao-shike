@@ -5,20 +5,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { createArtifactInventory, generateUpgradeChoices } from '../game/domain/artifactInventory'
 import { DEFAULT_GAME_SETTINGS } from '../game/settings/gameSettings'
-import type { GameSessionEvent } from '../game/session/GameSession'
+import type { GameSessionEffect, GameSessionSnapshot } from '../game/session/GameSession'
 import BattlefieldGame from './BattlefieldGame.vue'
 
 const battleHarness = vi.hoisted(() => ({
-  onEvent: undefined as ((event: GameSessionEvent) => void) | undefined,
+  onSnapshot: undefined as ((snapshot: GameSessionSnapshot) => void) | undefined,
+  onEffect: undefined as ((effect: GameSessionEffect) => void) | undefined,
   session: {
-    pause: vi.fn(),
-    resume: vi.fn(),
+    requestManualPause: vi.fn(),
+    releaseManualPause: vi.fn(),
+    setPlatformPause: vi.fn(),
+    setPageVisible: vi.fn(),
+    setInputSuspended: vi.fn(),
+    clearInputIntent: vi.fn(),
     selectInitialArtifact: vi.fn(),
     selectUpgrade: vi.fn(),
     selectAscension: vi.fn(),
     skipAscension: vi.fn(),
     deduceUpgrade: vi.fn(),
     tunaHeal: vi.fn(),
+    confirmBattlefieldEvent: vi.fn(),
     skipOnboarding: vi.fn(),
     setInputIntent: vi.fn(),
     castSpell: vi.fn(),
@@ -29,8 +35,12 @@ const battleHarness = vi.hoisted(() => ({
 }))
 
 vi.mock('../game/phaser/createBattleSession', () => ({
-  createBattleSession: (options: { onEvent: (event: GameSessionEvent) => void }) => {
-    battleHarness.onEvent = options.onEvent
+  createBattleSession: (options: {
+    onSnapshot: (snapshot: GameSessionSnapshot) => void
+    onEffect: (effect: GameSessionEffect) => void
+  }) => {
+    battleHarness.onSnapshot = options.onSnapshot
+    battleHarness.onEffect = options.onEffect
     return battleHarness.session
   },
 }))
@@ -72,15 +82,26 @@ describe('BattlefieldGame input adapter', () => {
     const choices = generateUpgradeChoices(createArtifactInventory('qing-feng-jian-xia'), 3)
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w' }))
-    battleHarness.onEvent?.({ type: 'upgrade-requested', choices, deductionCount: 1, canDeduce: true })
+    battleHarness.onSnapshot?.({
+      lifecycle: 'active',
+      pause: { active: true, presentation: 'decision' },
+      decision: {
+        type: 'upgrade',
+        id: 'decision-upgrade',
+        choices,
+        deductionCount: 1,
+        canDeduce: true,
+        isZhouTian: false,
+      },
+      hud: null,
+      onboardingStep: null,
+      onboardingCompleted: true,
+      result: null,
+    })
     await nextTick()
     await wrapper.get('[aria-label="法器突破与构筑升级"]').trigger('keydown', { key: '1' })
 
-    expect(battleHarness.session.selectUpgrade).toHaveBeenCalledWith(choices[0]!.choiceId)
-    expect(battleHarness.session.resume).toHaveBeenCalledWith('upgrade')
-    expect(battleHarness.session.setInputIntent).toHaveBeenLastCalledWith(
-      expect.objectContaining({ moveX: 0, moveY: -1 }),
-    )
+    expect(battleHarness.session.selectUpgrade).toHaveBeenCalledWith('decision-upgrade', choices[0]!.choiceId)
     wrapper.unmount()
   })
 
@@ -89,23 +110,31 @@ describe('BattlefieldGame input adapter', () => {
       props: { settings: DEFAULT_GAME_SETTINGS, showOnboarding: false },
     })
 
-    battleHarness.onEvent?.({
-      type: 'battlefield-event',
-      firstEncounter: true,
-      event: {
+    battleHarness.onSnapshot?.({
+      lifecycle: 'active',
+      pause: { active: true, presentation: 'decision' },
+      decision: {
+        type: 'battlefield-event',
+        id: 'decision-event',
+        event: {
         kind: 'lingquan',
         phase: 'available',
         name: '灵泉涌现',
         objective: '进入青蓝引导区域并维持两秒。',
         remainingMs: 45_000,
         reward: '恢复 35% 最大生命',
+        },
       },
+      hud: null,
+      onboardingStep: null,
+      onboardingCompleted: true,
+      result: null,
     })
     await nextTick()
 
     expect(wrapper.get('[aria-label="战场事件说明"]').text()).toContain('灵泉涌现')
     await wrapper.get('[aria-label="战场事件说明"] button').trigger('click')
-    expect(battleHarness.session.resume).toHaveBeenCalledWith('tutorial')
+    expect(battleHarness.session.confirmBattlefieldEvent).toHaveBeenCalledWith('decision-event')
     wrapper.unmount()
   })
 })

@@ -137,18 +137,18 @@ describe('核心切片与构筑验收 (Issue #9)', () => {
       },
     }
 
-    const session = createGameSessionController(runtime)
+    const { session } = createGameSessionController(runtime)
 
-    session.pause('upgrade')
+    session.setPlatformPause('viewport', true)
     expect(currentPaused).toBe(true)
 
-    session.pause('orientation')
+    session.setPlatformPause('orientation', true)
     expect(currentPaused).toBe(true)
 
-    session.resume('upgrade')
+    session.setPlatformPause('viewport', false)
     expect(currentPaused).toBe(true) // Still paused due to orientation
 
-    session.resume('orientation')
+    session.setPlatformPause('orientation', false)
     expect(currentPaused).toBe(false)
   })
 })

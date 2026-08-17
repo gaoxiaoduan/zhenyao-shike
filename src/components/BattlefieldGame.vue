@@ -1,21 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, shallowRef, useTemplateRef, watch } from 'vue'
-import type { AscensionRecipe, UpgradeDraftChoice } from '../game/domain/artifactInventory'
-import type { ZhouTianOption } from '../game/domain/deductionAndZhouTian'
 import { createInputIntent, mergeMovementIntent, type InputIntent } from '../game/domain/inputIntent'
 import type { BaseArtifact } from '../game/domain/initialArtifactSelection'
-import {
-  completeOnboardingStep,
-  createOnboardingProgress,
-  nextOnboardingStep,
-  type OnboardingProgress,
-} from '../game/domain/onboardingProgress'
 import { createBattleSession } from '../game/phaser/createBattleSession'
 import type { AudioIntent } from '../game/audio/audioDirector'
-import type { DamageSource, RunResult, RunSummary } from '../game/domain/runSummary'
+import type { DamageSource, RunSummary } from '../game/domain/runSummary'
 import { computeBattleViewport, computeRenderScale } from '../game/platform/viewportPolicy'
 import { normalizeBindingKey, type ControlAction, type GameSettings } from '../game/settings/gameSettings'
-import type { BattleHudSnapshot, BattleInstrumentationSnapshot, BattlefieldEventSnapshot, GameSession, GameSessionEvent, OnboardingStep } from '../game/session/GameSession'
+import type {
+  BattleHudSnapshot,
+  BattleInstrumentationSnapshot,
+  GameSession,
+  GameSessionEffect,
+  GameSessionSnapshot,
+} from '../game/session/GameSession'
 import BattleTouchControls from './BattleTouchControls.vue'
 import BattleHud from './game/BattleHud.vue'
 import InitialArtifactSelectionModal from './InitialArtifactSelectionModal.vue'
@@ -43,10 +41,6 @@ const emit = defineEmits<{
 
 const battleMount = useTemplateRef<HTMLElement>('battleMount')
 const session = shallowRef<GameSession | null>(null)
-const showPause = shallowRef(false)
-const orientationPaused = shallowRef(false)
-const viewportPaused = shallowRef(false)
-const visibilityPaused = shallowRef(false)
 const pressedKeys = new Set<string>()
 const desktopMedia = window.matchMedia('(hover: hover) and (pointer: fine)')
 const viewport = shallowRef(computeBattleViewport({
@@ -54,17 +48,35 @@ const viewport = shallowRef(computeBattleViewport({
   height: window.innerHeight,
   desktop: desktopMedia.matches,
 }))
-const initialArtifactCandidates = shallowRef<readonly BaseArtifact[]>([])
-const upgradeChoices = shallowRef<readonly (UpgradeDraftChoice | ZhouTianOption)[]>([])
-const ascensionChoices = shallowRef<readonly AscensionRecipe[]>([])
-const deductionCount = shallowRef(1)
-const canDeduce = shallowRef(false)
-const isZhouTian = shallowRef(false)
-const onboardingProgress = shallowRef<OnboardingProgress>(createOnboardingProgress())
-const hudSnapshot = shallowRef<BattleHudSnapshot | null>(null)
-const endingNotice = shallowRef<{ result: RunResult; source: DamageSource } | null>(null)
-const eventNotice = shallowRef<BattlefieldEventSnapshot | null>(null)
+const emptySnapshot: GameSessionSnapshot = {
+  lifecycle: 'active',
+  pause: { active: false, presentation: null },
+  decision: null,
+  hud: null,
+  onboardingStep: null,
+  onboardingCompleted: false,
+  result: null,
+}
+const sessionSnapshot = shallowRef<GameSessionSnapshot>(emptySnapshot)
+const hudSnapshot = computed<BattleHudSnapshot | null>(() => sessionSnapshot.value.hud)
+const initialDecision = computed(() => sessionSnapshot.value.decision?.type === 'initial-artifact-selection'
+  ? sessionSnapshot.value.decision
+  : null)
+const upgradeDecision = computed(() => sessionSnapshot.value.decision?.type === 'upgrade'
+  ? sessionSnapshot.value.decision
+  : null)
+const ascensionDecision = computed(() => sessionSnapshot.value.decision?.type === 'ascension'
+  ? sessionSnapshot.value.decision
+  : null)
+const eventNotice = computed(() => sessionSnapshot.value.decision?.type === 'battlefield-event'
+  ? sessionSnapshot.value.decision.event
+  : null)
+const endingNotice = computed(() => sessionSnapshot.value.result?.state === 'ending'
+  ? sessionSnapshot.value.result
+  : null)
 let movementIntent = createInputIntent()
+let finishedSummary: RunSummary | null = null
+let onboardingCompletionNotified = false
 const e2eTimeScale = import.meta.env.DEV
   && new URLSearchParams(window.location.search).get('e2e-time') === '30'
   ? 30
@@ -90,172 +102,107 @@ const damageSourceLabels: Readonly<Record<DamageSource, string>> = {
   unknown: '妖潮压境',
 }
 
-const initialSelectionOpen = computed(() => initialArtifactCandidates.value.length > 0)
-const upgradeModalOpen = computed(() => upgradeChoices.value.length > 0 || ascensionChoices.value.length > 0)
-const onboardingStep = computed(() => props.showOnboarding ? nextOnboardingStep(onboardingProgress.value) : null)
+const initialSelectionOpen = computed(() => initialDecision.value !== null)
+const upgradeModalOpen = computed(() => upgradeDecision.value !== null || ascensionDecision.value !== null)
+const onboardingStep = computed(() => props.showOnboarding ? sessionSnapshot.value.onboardingStep : null)
+const pausePresentation = computed(() => sessionSnapshot.value.pause.presentation)
+const pauseOverlayOpen = computed(() => pausePresentation.value === 'manual'
+  || pausePresentation.value === 'orientation'
+  || pausePresentation.value === 'viewport')
 const battlefieldStyle = computed(() => ({
   '--battle-aspect': viewport.value.aspectRatio.toString(),
 }))
 const pauseTitle = computed(() => {
-  if (orientationPaused.value) {
+  if (pausePresentation.value === 'orientation') {
     return '请旋转设备'
   }
-  if (viewportPaused.value) {
+  if (pausePresentation.value === 'viewport') {
     return '请扩大窗口'
   }
   return '暂避妖潮'
 })
 const pauseDescription = computed(() => {
-  if (orientationPaused.value) {
+  if (pausePresentation.value === 'orientation') {
     return '横屏后点击继续，战场才会恢复。'
   }
-  if (viewportPaused.value) {
+  if (pausePresentation.value === 'viewport') {
     return '桌面战场至少需要 960 × 540 的可用空间。'
   }
   return '自动攻击与妖潮已完全暂停。'
 })
-const audioPauseMode = computed(() => {
-  if (showPause.value || orientationPaused.value || viewportPaused.value || visibilityPaused.value || eventNotice.value) {
-    return 'full' as const
-  }
-  if (initialSelectionOpen.value || upgradeModalOpen.value) {
-    return 'choice' as const
-  }
-  return 'active' as const
-})
-
-watch(audioPauseMode, (mode) => emit('audioIntent', { type: 'pause', mode }), { immediate: true })
 watch(() => props.inputSuspended, (suspended) => {
   if (suspended) {
-    clearKeyboardIntent()
+    clearKeyboardState()
   }
+  session.value?.setInputSuspended(suspended)
 })
 watch(() => props.settings.reducedMotion, (reducedMotion) => {
   session.value?.setReducedMotion(reducedMotion)
 })
 
-function handleSessionEvent(event: GameSessionEvent) {
-  if (event.type === 'audio-intent') {
-    emit('audioIntent', event.intent)
-    return
+function handleSessionSnapshot(snapshot: GameSessionSnapshot) {
+  const wasOnboardingCompleted = sessionSnapshot.value.onboardingCompleted
+  sessionSnapshot.value = snapshot
+  if (props.showOnboarding && !wasOnboardingCompleted && snapshot.onboardingCompleted && !onboardingCompletionNotified) {
+    onboardingCompletionNotified = true
+    emit('onboardingCompleted')
   }
-
-  if (event.type === 'hud-updated') {
-    hudSnapshot.value = event.snapshot
-    return
+  if (snapshot.result?.state === 'ended' && snapshot.result.summary !== finishedSummary) {
+    finishedSummary = snapshot.result.summary
+    emit('finished', snapshot.result.summary)
   }
+}
 
-  if (event.type === 'battlefield-event') {
-    if (event.firstEncounter) {
-      eventNotice.value = event.event
-      session.value?.pause('tutorial')
-    }
-    return
-  }
-
-  if (event.type === 'run-ending') {
-    endingNotice.value = { result: event.result, source: event.source }
-    return
-  }
-
-  if (event.type === 'initial-artifact-selection-requested') {
-    initialArtifactCandidates.value = event.candidates
-    return
-  }
-
-  if (event.type === 'upgrade-requested') {
-    upgradeChoices.value = event.choices
-    deductionCount.value = event.deductionCount
-    canDeduce.value = event.canDeduce
-    isZhouTian.value = !!event.isZhouTian
-    session.value?.pause('upgrade')
-    return
-  }
-
-  if (event.type === 'ascension-requested') {
-    ascensionChoices.value = event.choices
-    session.value?.pause('upgrade')
-    return
-  }
-
-  if (event.type === 'onboarding-step-completed') {
-    advanceOnboarding(event.step)
-    return
-  }
-
-  if (event.type === 'pause-requested') {
-    showPause.value = true
-    session.value?.pause('manual')
-    return
-  }
-
-  if (event.type === 'run-ended') {
-    emit('finished', event.summary)
+function handleSessionEffect(effect: GameSessionEffect) {
+  if (effect.type === 'audio') {
+    emit('audioIntent', effect.intent)
   }
 }
 
 function selectInitialArtifact(artifactId: BaseArtifact['id']) {
-  session.value?.selectInitialArtifact(artifactId)
-  initialArtifactCandidates.value = []
-  restoreMovementIntent()
+  const decision = initialDecision.value
+  if (decision) {
+    session.value?.selectInitialArtifact(decision.id, artifactId)
+  }
 }
 
 function selectUpgrade(choiceId: string) {
-  upgradeChoices.value = []
-  ascensionChoices.value = []
-  session.value?.selectUpgrade(choiceId)
-  emit('audioIntent', { type: 'effect', cue: 'ui-confirm' })
-  if (upgradeChoices.value.length === 0 && ascensionChoices.value.length === 0) {
-    session.value?.resume('upgrade')
-    restoreMovementIntent()
+  const decision = upgradeDecision.value
+  if (decision) {
+    session.value?.selectUpgrade(decision.id, choiceId)
   }
 }
 
 function selectAscension(choiceId: string) {
-  ascensionChoices.value = []
-  session.value?.selectAscension(choiceId)
-  if (upgradeChoices.value.length === 0 && ascensionChoices.value.length === 0) {
-    session.value?.resume('upgrade')
-    restoreMovementIntent()
+  const decision = ascensionDecision.value
+  if (decision) {
+    session.value?.selectAscension(decision.id, choiceId)
   }
 }
 
 function skipAscension() {
-  ascensionChoices.value = []
-  session.value?.skipAscension()
-  emit('audioIntent', { type: 'effect', cue: 'ui-back' })
-  if (upgradeChoices.value.length === 0) {
-    session.value?.resume('upgrade')
-    restoreMovementIntent()
+  const decision = ascensionDecision.value
+  if (decision) {
+    session.value?.skipAscension(decision.id)
   }
 }
 
 function deduceUpgrade() {
-  session.value?.deduceUpgrade()
+  const decision = upgradeDecision.value
+  if (decision) {
+    session.value?.deduceUpgrade(decision.id)
+  }
 }
 
 function tunaHeal() {
-  upgradeChoices.value = []
-  ascensionChoices.value = []
-  session.value?.tunaHeal()
-  session.value?.resume('upgrade')
-  restoreMovementIntent()
-}
-
-function advanceOnboarding(completedStep: OnboardingStep) {
-  if (!props.showOnboarding) {
-    return
-  }
-
-  onboardingProgress.value = completeOnboardingStep(onboardingProgress.value, completedStep)
-  if (nextOnboardingStep(onboardingProgress.value) === null) {
-    emit('onboardingCompleted')
+  const decision = upgradeDecision.value ?? ascensionDecision.value
+  if (decision) {
+    session.value?.tunaHeal(decision.id)
   }
 }
 
 function skipOnboarding() {
   session.value?.skipOnboarding()
-  emit('onboardingCompleted')
 }
 
 function setTouchIntent(intent: InputIntent) {
@@ -268,35 +215,25 @@ function castSpell() {
 }
 
 function resumeEventNotice() {
-  eventNotice.value = null
-  session.value?.resume('tutorial')
-  restoreMovementIntent()
+  const decision = sessionSnapshot.value.decision
+  if (decision?.type === 'battlefield-event') {
+    session.value?.confirmBattlefieldEvent(decision.id)
+  }
 }
 
 function togglePause() {
-  if (showPause.value) {
-    continueRun()
+  if (pausePresentation.value === 'manual') {
+    session.value?.releaseManualPause()
     return
   }
 
-  showPause.value = true
-  clearKeyboardIntent()
-  session.value?.pause('manual')
+  session.value?.requestManualPause()
 }
 
 function continueRun() {
-  if (orientationPaused.value || viewportPaused.value) {
-    return
+  if (pausePresentation.value === 'manual') {
+    session.value?.releaseManualPause()
   }
-
-  showPause.value = false
-  session.value?.resume('manual')
-}
-
-function resumeAfterViewportRecovery(reason: 'orientation' | 'viewport') {
-  showPause.value = true
-  session.value?.pause('manual')
-  session.value?.resume(reason)
 }
 
 function syncViewport() {
@@ -307,34 +244,13 @@ function syncViewport() {
   })
   viewport.value = nextViewport
   session.value?.resize(nextViewport)
-
-  if (nextViewport.requiresOrientation) {
-    orientationPaused.value = true
-    session.value?.pause('orientation')
-  } else if (orientationPaused.value) {
-    orientationPaused.value = false
-    resumeAfterViewportRecovery('orientation')
-  }
-
-  if (nextViewport.requiresLargerWindow) {
-    viewportPaused.value = true
-    session.value?.pause('viewport')
-  } else if (viewportPaused.value) {
-    viewportPaused.value = false
-    resumeAfterViewportRecovery('viewport')
-  }
 }
 
 function syncVisibility() {
   if (document.hidden) {
-    visibilityPaused.value = true
-    clearKeyboardIntent()
-    session.value?.pause('visibility')
-    return
+    clearKeyboardState()
   }
-
-  visibilityPaused.value = false
-  session.value?.resume('visibility')
+  session.value?.setPageVisible(!document.hidden)
 }
 
 function isBound(action: ControlAction, key: string) {
@@ -398,9 +314,13 @@ function handleKeyUp(event: KeyboardEvent) {
   syncKeyboardIntent()
 }
 
-function clearKeyboardIntent() {
+function clearKeyboardState() {
   pressedKeys.clear()
   movementIntent = createInputIntent()
+}
+
+function clearKeyboardIntent() {
+  clearKeyboardState()
   restoreMovementIntent()
 }
 
@@ -412,7 +332,8 @@ onMounted(() => {
 
   session.value = createBattleSession({
     parent: mount,
-    onEvent: handleSessionEvent,
+    onSnapshot: handleSessionSnapshot,
+    onEffect: handleSessionEffect,
     viewport: viewport.value,
     renderScale: computeRenderScale({
       quality: props.settings.quality,
@@ -427,6 +348,7 @@ onMounted(() => {
     deterministicAcceptance: e2eTimeScale > 1,
     practiceMode: props.practiceMode,
   })
+  session.value.setInputSuspended(props.inputSuspended)
   window.addEventListener('resize', syncViewport)
   window.addEventListener('blur', clearKeyboardIntent)
   window.addEventListener('keydown', handleKeyDown)
@@ -502,17 +424,17 @@ onUnmounted(() => {
 
     <InitialArtifactSelectionModal
       v-if="initialSelectionOpen"
-      :candidates="initialArtifactCandidates"
+      :candidates="initialDecision?.candidates ?? []"
       @select="selectInitialArtifact"
     />
 
     <UpgradeSelectionModal
       v-if="upgradeModalOpen"
-      :choices="upgradeChoices"
-      :ascensions="ascensionChoices"
-      :deduction-count="deductionCount"
-      :can-deduce="canDeduce"
-      :is-zhou-tian="isZhouTian"
+      :choices="upgradeDecision?.choices ?? []"
+      :ascensions="ascensionDecision?.choices ?? []"
+      :deduction-count="upgradeDecision?.deductionCount ?? 0"
+      :can-deduce="upgradeDecision?.canDeduce ?? false"
+      :is-zhou-tian="upgradeDecision?.isZhouTian ?? false"
       @select="selectUpgrade"
       @select-ascension="selectAscension"
       @skip-ascension="skipAscension"
@@ -521,7 +443,7 @@ onUnmounted(() => {
     />
 
     <div
-      v-if="showPause || orientationPaused || viewportPaused"
+      v-if="pauseOverlayOpen"
       class="absolute inset-0 z-40 grid place-items-center bg-stone-950/78 p-5 backdrop-blur-sm"
       role="dialog"
       aria-label="历练暂停"
@@ -535,7 +457,7 @@ onUnmounted(() => {
           {{ pauseDescription }}
         </p>
         <button
-          v-if="!orientationPaused && !viewportPaused"
+          v-if="pausePresentation === 'manual'"
           class="game-button mt-7 w-full"
           type="button"
           @click="continueRun"
@@ -543,7 +465,7 @@ onUnmounted(() => {
           继续历练
         </button>
         <button
-          v-if="!orientationPaused && !viewportPaused"
+          v-if="pausePresentation === 'manual'"
           class="game-button game-button--quiet mt-3 w-full"
           type="button"
           @click="emit('openSettings')"

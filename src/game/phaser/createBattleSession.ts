@@ -106,7 +106,7 @@ import {
   performDeduction,
   type ZhouTianOptionId,
 } from '../domain/deductionAndZhouTian'
-import type { BattleInstrumentationSnapshot, CreateGameSessionOptions, GameSessionEvent } from '../session/GameSession'
+import type { BattleInstrumentationSnapshot, CreateGameSessionOptions, BattleRuntimeOutput } from '../session/GameSession'
 import { createGameSessionController, type BattleRuntime } from '../session/GameSessionController'
 
 const WORLD_SIZE = 2048
@@ -203,7 +203,7 @@ interface DeathBurst {
 }
 
 class QingShiRidgeScene extends Phaser.Scene {
-  private readonly emitSessionEvent: (event: GameSessionEvent) => void
+  private readonly reportRuntimeOutput: (event: BattleRuntimeOutput) => void
   private readonly renderScale: number
   private readonly compactRadar: boolean
   private readonly elapsedTimeScale: number
@@ -301,7 +301,7 @@ class QingShiRidgeScene extends Phaser.Scene {
   private ended = false
 
   constructor(
-    emitSessionEvent: (event: GameSessionEvent) => void,
+    reportRuntimeOutput: (event: BattleRuntimeOutput) => void,
     renderScale: number,
     reducedMotion: boolean,
     viewportWidth: number,
@@ -314,7 +314,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     practiceMode = false,
   ) {
     super({ key: 'qing-shi-ridge' })
-    this.emitSessionEvent = emitSessionEvent
+    this.reportRuntimeOutput = reportRuntimeOutput
     this.renderScale = renderScale
     this.reducedMotion = reducedMotion
     this.viewportWidth = viewportWidth
@@ -364,7 +364,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.updateDiscoveredLandmarks()
     this.updateHudText()
     this.renderBattlefield()
-    this.emitSessionEvent({
+    this.reportRuntimeOutput({
       type: 'initial-artifact-selection-requested',
       candidates: this.initialArtifactSelection.candidates,
     })
@@ -543,12 +543,11 @@ class QingShiRidgeScene extends Phaser.Scene {
 
       this.pendingLevelUps = Math.max(0, this.pendingLevelUps - 1)
       this.awaitingUpgradeSelection = false
+      this.emitAudio('ui-confirm')
       this.updateHudText()
 
       if (this.pendingLevelUps > 0) {
         this.triggerNextUpgradeIfAvailable()
-      } else {
-        this.setPaused(false)
       }
       return
     }
@@ -579,6 +578,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.pendingLevelUps = Math.max(0, this.pendingLevelUps - 1)
     this.awaitingUpgradeSelection = false
     this.upgradeChoices = []
+    this.emitAudio('ui-confirm')
 
     this.updateHudText()
 
@@ -586,8 +586,6 @@ class QingShiRidgeScene extends Phaser.Scene {
       this.triggerNextUpgradeIfAvailable()
     } else if (this.ascensionChoices.length > 0) {
       this.beginAscensionSelection(this.ascensionChoices)
-    } else {
-      this.setPaused(false)
     }
   }
 
@@ -614,7 +612,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.deductionState = result.nextState
     this.upgradeDraftState = result.nextDraftState
     this.upgradeChoices = result.newChoices
-    this.emitSessionEvent({
+    this.reportRuntimeOutput({
       type: 'upgrade-requested',
       choices: this.upgradeChoices,
       deductionCount: this.deductionState.remainingCount,
@@ -642,8 +640,8 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.ascensionChoices = []
     this.pendingLevelUps = Math.max(0, this.pendingLevelUps - 1)
 
+    this.emitAudio('ui-back')
     this.updateHudText()
-    this.setPaused(false)
   }
 
   selectAscension(choiceId: string) {
@@ -665,8 +663,6 @@ class QingShiRidgeScene extends Phaser.Scene {
     const nextAscensions = getAvailableAscensionChoices(this.inventory)
     if (nextAscensions.length > 0) {
       this.beginAscensionSelection(nextAscensions)
-    } else {
-      this.setPaused(false)
     }
   }
 
@@ -677,9 +673,7 @@ class QingShiRidgeScene extends Phaser.Scene {
 
     this.awaitingAscensionSelection = false
     this.ascensionChoices = []
-    if (!this.awaitingUpgradeSelection) {
-      this.setPaused(false)
-    }
+    this.emitAudio('ui-back')
   }
 
   skipOnboarding() {
@@ -740,7 +734,10 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.bossAttack = 'none'
     this.bossAttackAvoidanceWindowMs = 0
     this.bossAttackResolved = false
-    this.emitSessionEvent({ type: 'audio-intent', intent: { type: 'music', stage: 'boss' } })
+    this.reportRuntimeOutput({
+      type: 'effect',
+      effect: { type: 'audio', intent: { type: 'music', stage: 'boss' } },
+    })
     this.emitAudio('boss-arrival')
     this.updateHudText()
   }
@@ -948,7 +945,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     this.playerDowned = result === 'defeat'
     this.progress = endRun(this.progress)
     this.inputIntent = createInputIntent()
-    this.emitSessionEvent({ type: 'run-ending', result, source: this.finalDamageSource })
+    this.reportRuntimeOutput({ type: 'run-ending', result, source: this.finalDamageSource })
     const summary = createRunSummary({
       result,
       elapsedMs: this.progress.elapsedMs,
@@ -964,7 +961,7 @@ class QingShiRidgeScene extends Phaser.Scene {
       practiceMode: this.practiceMode,
     })
     this.time.delayedCall(RESULT_FREEZE_MS, () => {
-      this.emitSessionEvent({ type: 'run-ended', summary })
+      this.reportRuntimeOutput({ type: 'run-ended', summary })
     })
   }
 
@@ -1020,8 +1017,8 @@ class QingShiRidgeScene extends Phaser.Scene {
   private advanceBattlefieldEvents(stepMs: number) {
     if (this.demonLair.phase === 'travel' && !this.seenBattlefieldEvents.has('demon-lair')) {
       this.seenBattlefieldEvents.add('demon-lair')
-      this.emitSessionEvent({
-        type: 'battlefield-event',
+      this.reportRuntimeOutput({
+        type: 'battlefield-event-requested',
         event: {
           kind: 'demon-lair',
           phase: 'travel',
@@ -1032,16 +1029,13 @@ class QingShiRidgeScene extends Phaser.Scene {
         },
         firstEncounter: !this.deterministicAcceptance,
       })
-      if (!this.deterministicAcceptance) {
-        this.setPaused(true)
-      }
       return
     }
 
     if (this.lingquanEvent.phase === 'available' && !this.seenBattlefieldEvents.has('lingquan')) {
       this.seenBattlefieldEvents.add('lingquan')
-      this.emitSessionEvent({
-        type: 'battlefield-event',
+      this.reportRuntimeOutput({
+        type: 'battlefield-event-requested',
         event: {
           kind: 'lingquan',
           phase: 'available',
@@ -1052,9 +1046,6 @@ class QingShiRidgeScene extends Phaser.Scene {
         },
         firstEncounter: !this.deterministicAcceptance,
       })
-      if (!this.deterministicAcceptance) {
-        this.setPaused(true)
-      }
       return
     }
 
@@ -1707,8 +1698,7 @@ class QingShiRidgeScene extends Phaser.Scene {
       this.awaitingUpgradeSelection = true
       this.upgradeChoices = choices
       this.awaitingAscensionSelection = false
-      this.setPaused(true)
-      this.emitSessionEvent({
+      this.reportRuntimeOutput({
         type: 'upgrade-requested',
         choices,
         deductionCount: this.deductionState.remainingCount,
@@ -1737,8 +1727,7 @@ class QingShiRidgeScene extends Phaser.Scene {
       this.isZhouTianActive = true
       this.awaitingUpgradeSelection = true
       this.awaitingAscensionSelection = false
-      this.setPaused(true)
-      this.emitSessionEvent({
+      this.reportRuntimeOutput({
         type: 'upgrade-requested',
         choices: zhouTianChoices,
         deductionCount: this.deductionState.remainingCount,
@@ -1750,21 +1739,18 @@ class QingShiRidgeScene extends Phaser.Scene {
 
     this.pendingLevelUps = 0
     this.awaitingUpgradeSelection = false
-    this.setPaused(false)
   }
 
   private beginAscensionSelection(choices: readonly AscensionRecipe[]) {
     if (choices.length === 0) {
       this.awaitingAscensionSelection = false
       this.ascensionChoices = []
-      this.setPaused(false)
       return
     }
 
     this.awaitingAscensionSelection = true
     this.ascensionChoices = choices
-    this.setPaused(true)
-    this.emitSessionEvent({ type: 'ascension-requested', choices })
+    this.reportRuntimeOutput({ type: 'ascension-requested', choices })
   }
 
   private updateCamera() {
@@ -1855,7 +1841,7 @@ class QingShiRidgeScene extends Phaser.Scene {
     }
 
     this.completedOnboardingSteps.add(step)
-    this.emitSessionEvent({ type: 'onboarding-step-completed', step })
+    this.reportRuntimeOutput({ type: 'onboarding-step-completed', step })
   }
 
   private syncMusicStage() {
@@ -1865,11 +1851,17 @@ class QingShiRidgeScene extends Phaser.Scene {
     }
 
     this.musicStage = nextStage
-    this.emitSessionEvent({ type: 'audio-intent', intent: { type: 'music', stage: nextStage } })
+    this.reportRuntimeOutput({
+      type: 'effect',
+      effect: { type: 'audio', intent: { type: 'music', stage: nextStage } },
+    })
   }
 
   private emitAudio(cue: SoundCue) {
-    this.emitSessionEvent({ type: 'audio-intent', intent: { type: 'effect', cue } })
+    this.reportRuntimeOutput({
+      type: 'effect',
+      effect: { type: 'audio', intent: { type: 'effect', cue } },
+    })
   }
 
   private createEnemySprite(id: string, x: number, y: number, radius: number) {
@@ -1955,7 +1947,7 @@ class QingShiRidgeScene extends Phaser.Scene {
           }
         : undefined
 
-    this.emitSessionEvent({
+    this.reportRuntimeOutput({
       type: 'hud-updated',
       snapshot: {
         health: Math.ceil(this.player.health),
@@ -2525,8 +2517,9 @@ class QingShiRidgeScene extends Phaser.Scene {
 }
 
 export function createBattleSession(options: CreateGameSessionOptions) {
+  let reportRuntimeOutput: (output: BattleRuntimeOutput) => void = () => undefined
   const scene = new QingShiRidgeScene(
-    options.onEvent,
+    (output) => reportRuntimeOutput(output),
     options.renderScale,
     options.reducedMotion,
     options.viewport.internalWidth,
@@ -2538,23 +2531,7 @@ export function createBattleSession(options: CreateGameSessionOptions) {
     options.deterministicAcceptance ?? false,
     options.practiceMode ?? false,
   )
-  const game = new Phaser.Game({
-    type: Phaser.AUTO,
-    parent: options.parent,
-    width: options.viewport.internalWidth * options.renderScale,
-    height: options.viewport.internalHeight * options.renderScale,
-    antialias: false,
-    pixelArt: true,
-    roundPixels: true,
-    backgroundColor: '#12251d',
-    scene,
-    scale: {
-      mode: Phaser.Scale.FIT,
-      autoCenter: Phaser.Scale.CENTER_BOTH,
-      autoRound: true,
-    },
-  })
-
+  let game!: Phaser.Game
   const runtime: BattleRuntime = {
     selectInitialArtifact: (artifactId) => scene.selectInitialArtifact(artifactId),
     selectUpgrade: (choiceId) => scene.selectUpgrade(choiceId),
@@ -2577,5 +2554,27 @@ export function createBattleSession(options: CreateGameSessionOptions) {
     destroy: () => game.destroy(true),
   }
 
-  return createGameSessionController(runtime)
+  const controller = createGameSessionController(runtime, {
+    onSnapshot: options.onSnapshot,
+    onEffect: options.onEffect,
+  })
+  reportRuntimeOutput = controller.reportRuntimeOutput
+  game = new Phaser.Game({
+    type: Phaser.AUTO,
+    parent: options.parent,
+    width: options.viewport.internalWidth * options.renderScale,
+    height: options.viewport.internalHeight * options.renderScale,
+    antialias: false,
+    pixelArt: true,
+    roundPixels: true,
+    backgroundColor: '#12251d',
+    scene,
+    scale: {
+      mode: Phaser.Scale.FIT,
+      autoCenter: Phaser.Scale.CENTER_BOTH,
+      autoRound: true,
+    },
+  })
+
+  return controller.session
 }

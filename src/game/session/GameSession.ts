@@ -8,7 +8,7 @@ import type { DamageSource, RunResult, RunSummary } from '../domain/runSummary'
 import type { RunArtifactSummary } from '../domain/runSummary'
 import type { BattleViewport } from '../platform/viewportPolicy'
 
-export type PauseReason = 'manual' | 'orientation' | 'viewport' | 'visibility' | 'upgrade' | 'tutorial'
+export type PlatformPauseReason = 'orientation' | 'viewport' | 'visibility' | 'input'
 export type { OnboardingStep } from '../domain/onboardingProgress'
 
 export interface BattleHudSnapshot {
@@ -61,7 +61,30 @@ export interface BattleInstrumentationSnapshot {
   readonly radarLandmarks: number
 }
 
-export type GameSessionEvent =
+export type GameSessionDecision =
+  | {
+      readonly type: 'initial-artifact-selection'
+      readonly id: string
+      readonly candidates: readonly BaseArtifact[]
+    }
+  | {
+      readonly type: 'upgrade'
+      readonly id: string
+      readonly choices: readonly (UpgradeDraftChoice | ZhouTianOption)[]
+      readonly deductionCount: number
+      readonly canDeduce: boolean
+      readonly isZhouTian: boolean
+    }
+  | { readonly type: 'ascension'; readonly id: string; readonly choices: readonly AscensionRecipe[] }
+  | { readonly type: 'battlefield-event'; readonly id: string; readonly event: BattlefieldEventSnapshot }
+
+export type GameSessionResult =
+  | { readonly state: 'ending'; readonly result: RunResult; readonly source: DamageSource }
+  | { readonly state: 'ended'; readonly summary: RunSummary }
+
+export type GameSessionEffect = { readonly type: 'audio'; readonly intent: AudioIntent }
+
+export type BattleRuntimeOutput =
   | { readonly type: 'initial-artifact-selection-requested'; readonly candidates: readonly BaseArtifact[] }
   | {
       readonly type: 'upgrade-requested'
@@ -72,26 +95,51 @@ export type GameSessionEvent =
     }
   | { readonly type: 'ascension-requested'; readonly choices: readonly AscensionRecipe[] }
   | { readonly type: 'onboarding-step-completed'; readonly step: OnboardingStep }
-  | { readonly type: 'pause-requested' }
   | {
-      readonly type: 'battlefield-event'
+      readonly type: 'battlefield-event-requested'
       readonly event: BattlefieldEventSnapshot
       readonly firstEncounter: boolean
     }
-  | { readonly type: 'audio-intent'; readonly intent: AudioIntent }
+  | { readonly type: 'effect'; readonly effect: GameSessionEffect }
   | { readonly type: 'hud-updated'; readonly snapshot: BattleHudSnapshot }
   | { readonly type: 'run-ending'; readonly result: RunResult; readonly source: DamageSource }
   | { readonly type: 'run-ended'; readonly summary: RunSummary }
 
+export type GameSessionLifecycle = 'active' | 'ended' | 'disposed'
+export type PausePresentation = PlatformPauseReason | 'manual' | 'decision' | null
+
+export interface GameSessionSnapshot {
+  readonly lifecycle: GameSessionLifecycle
+  readonly pause: {
+    readonly active: boolean
+    readonly presentation: PausePresentation
+  }
+  readonly decision: GameSessionDecision | null
+  readonly hud: BattleHudSnapshot | null
+  readonly onboardingStep: OnboardingStep | null
+  readonly onboardingCompleted: boolean
+  readonly result: GameSessionResult | null
+}
+
+export interface GameSessionCallbacks {
+  readonly onSnapshot: (snapshot: GameSessionSnapshot) => void
+  readonly onEffect: (effect: GameSessionEffect) => void
+}
+
 export interface GameSession {
-  pause(reason: PauseReason): void
-  resume(reason: PauseReason): void
-  selectInitialArtifact(artifactId: BaseArtifactId): void
-  selectUpgrade(choiceId: string): void
-  selectAscension(choiceId: string): void
-  skipAscension(): void
-  deduceUpgrade(): void
-  tunaHeal(): void
+  requestManualPause(): void
+  releaseManualPause(): void
+  setPlatformPause(reason: PlatformPauseReason, paused: boolean): void
+  setPageVisible(visible: boolean): void
+  setInputSuspended(suspended: boolean): void
+  clearInputIntent(): void
+  selectInitialArtifact(decisionId: string, artifactId: BaseArtifactId): void
+  selectUpgrade(decisionId: string, choiceId: string): void
+  selectAscension(decisionId: string, choiceId: string): void
+  skipAscension(decisionId: string): void
+  deduceUpgrade(decisionId: string): void
+  tunaHeal(decisionId: string): void
+  confirmBattlefieldEvent(decisionId: string): void
   skipOnboarding(): void
   setInputIntent(intent: InputIntent): void
   castSpell(): void
@@ -102,7 +150,8 @@ export interface GameSession {
 
 export interface CreateGameSessionOptions {
   readonly parent: HTMLElement
-  readonly onEvent: (event: GameSessionEvent) => void
+  readonly onSnapshot: (snapshot: GameSessionSnapshot) => void
+  readonly onEffect: (effect: GameSessionEffect) => void
   readonly viewport: BattleViewport
   readonly renderScale: number
   readonly reducedMotion: boolean
