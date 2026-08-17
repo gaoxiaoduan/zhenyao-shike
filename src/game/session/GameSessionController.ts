@@ -40,7 +40,7 @@ const NOOP_CALLBACKS: GameSessionCallbacks = {
   onEffect: () => undefined,
 }
 
-type SessionPauseReason = PlatformPauseReason | 'manual' | 'decision'
+type SessionPauseReason = PlatformPauseReason | 'manual' | 'decision' | 'orientation-confirmation'
 
 interface PauseReasonUpdate {
   readonly reason: SessionPauseReason
@@ -125,6 +125,9 @@ export function createGameSessionController(
     if (pauseReasons.has('manual')) {
       return 'manual'
     }
+    if (pauseReasons.has('orientation-confirmation')) {
+      return 'orientation-confirmation'
+    }
     if (pauseReasons.has('decision')) {
       return 'decision'
     }
@@ -136,7 +139,8 @@ export function createGameSessionController(
       || pauseReasons.has('orientation')
       || pauseReasons.has('viewport')
       || pauseReasons.has('visibility')
-      || pauseReasons.has('input')) {
+      || pauseReasons.has('input')
+      || pauseReasons.has('orientation-confirmation')) {
       return 'full'
     }
     if (decision?.type === 'initial-artifact-selection'
@@ -252,6 +256,17 @@ export function createGameSessionController(
     clearInput = false,
   ): boolean {
     return setPauseReasons([{ reason, active, clearInput }])
+  }
+
+  function setOrientationPause(active: boolean): boolean {
+    const wasPaused = pauseReasons.has('orientation')
+    const updates: PauseReasonUpdate[] = [{ reason: 'orientation', active }]
+    if (active) {
+      updates.push({ reason: 'orientation-confirmation', active: false })
+    } else if (wasPaused) {
+      updates.push({ reason: 'orientation-confirmation', active: true })
+    }
+    return setPauseReasons(updates)
   }
 
   function beginDecision(nextDecision: GameSessionDecision) {
@@ -392,7 +407,14 @@ export function createGameSessionController(
     releaseManualPause() {
       setPauseReason('manual', false)
     },
+    confirmOrientation() {
+      setPauseReason('orientation-confirmation', false)
+    },
     setPlatformPause(reason, pausedByPlatform) {
+      if (reason === 'orientation') {
+        setOrientationPause(pausedByPlatform)
+        return
+      }
       setPauseReason(reason, pausedByPlatform, pausedByPlatform && (reason === 'visibility' || reason === 'input'))
     },
     setPageVisible(visible) {
@@ -484,10 +506,17 @@ export function createGameSessionController(
         return
       }
       runtime.resize(viewport)
-      setPauseReasons([
+      const wasOrientationPaused = pauseReasons.has('orientation')
+      const updates: PauseReasonUpdate[] = [
         { reason: 'orientation', active: viewport.requiresOrientation },
-        { reason: 'viewport', active: viewport.requiresLargerWindow },
-      ])
+      ]
+      if (viewport.requiresOrientation) {
+        updates.push({ reason: 'orientation-confirmation', active: false })
+      } else if (wasOrientationPaused) {
+        updates.push({ reason: 'orientation-confirmation', active: true })
+      }
+      updates.push({ reason: 'viewport', active: viewport.requiresLargerWindow })
+      setPauseReasons(updates)
     },
     setReducedMotion(reducedMotion) {
       if (disposed || lifecycle !== 'active') {

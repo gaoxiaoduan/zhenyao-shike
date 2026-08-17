@@ -67,6 +67,8 @@ describe('一局会话 external seam', () => {
     expect(snapshots.at(-1)?.pause).toEqual({ active: true, presentation: 'orientation' })
     session.setPlatformPause('orientation', false)
 
+    expect(snapshots.at(-1)?.pause).toEqual({ active: true, presentation: 'orientation-confirmation' })
+    session.confirmOrientation()
     expect(runtime.setPaused).toHaveBeenNthCalledWith(1, true)
     expect(runtime.setPaused).toHaveBeenNthCalledWith(2, false)
     expect(runtime.setInputIntent).toHaveBeenLastCalledWith(createInputIntent())
@@ -141,6 +143,59 @@ describe('一局会话 external seam', () => {
     expect(runtime.setPaused).toHaveBeenNthCalledWith(1, true)
     expect(runtime.setPaused).toHaveBeenNthCalledWith(2, false)
     expect(runtime.setInputIntent).toHaveBeenLastCalledWith(intent)
+  })
+
+  it('让连续升阶逐项完成，并在最后一项结束后恢复移动', () => {
+    const runtime = createRuntime()
+    let reportRuntimeOutput: (output: BattleRuntimeOutput) => void = () => undefined
+    vi.mocked(runtime.selectAscension).mockImplementationOnce(() => {
+      reportRuntimeOutput({
+        type: 'ascension-requested',
+        choices: [{
+          choiceId: 'ascend-liu-guang-jiu-xiao',
+          resultId: 'jiu-xiao-lei-zhen',
+          name: '九霄雷阵',
+          description: '雷阵',
+          sourceIds: ['lei-zhuan-fu-ce', 'si-xiang-zhen-qi'],
+          sourceNames: ['雷篆符册', '四象阵旗'],
+          slotCountBefore: 2,
+          slotCountAfter: 1,
+          attackColor: 0x93c5fd,
+        }],
+      })
+    })
+    const created = createSession(runtime)
+    reportRuntimeOutput = created.reportRuntimeOutput
+    reportRuntimeOutput({
+      type: 'ascension-requested',
+      choices: [{
+        choiceId: 'ascend-qing-feng-si-xiang',
+        resultId: 'zhu-xie-jian-zhen',
+        name: '诛邪剑阵',
+        description: '剑雨',
+        sourceIds: ['qing-feng-jian-xia', 'si-xiang-zhen-qi'],
+        sourceNames: ['青锋剑匣', '四象阵旗'],
+        slotCountBefore: 2,
+        slotCountAfter: 1,
+        attackColor: 0xf0abfc,
+      }],
+    })
+    const firstDecision = created.snapshots.at(-1)?.decision
+    if (!firstDecision || firstDecision.type !== 'ascension') {
+      throw new Error('expected first ascension decision')
+    }
+    created.session.selectAscension(firstDecision.id, firstDecision.choices[0]!.choiceId)
+
+    const secondDecision = created.snapshots.at(-1)?.decision
+    expect(secondDecision?.type).toBe('ascension')
+    expect(runtime.setPaused).toHaveBeenCalledOnce()
+    if (!secondDecision || secondDecision.type !== 'ascension') {
+      throw new Error('expected second ascension decision')
+    }
+    created.session.selectAscension(secondDecision.id, secondDecision.choices[0]!.choiceId)
+
+    expect(runtime.selectAscension).toHaveBeenCalledTimes(2)
+    expect(runtime.setPaused).toHaveBeenNthCalledWith(2, false)
   })
 
   it('让多个待处理升级机会按顺序完成，且只在最后一项恢复 runtime', () => {
@@ -387,6 +442,7 @@ describe('一局会话 external seam', () => {
     session.resize({ ...tooSmallPortrait, requiresOrientation: false, requiresLargerWindow: false })
     expect(snapshots.at(-1)?.pause.presentation).toBe('input')
     session.setInputSuspended(false)
+    session.confirmOrientation()
 
     expect(runtime.setPaused).toHaveBeenNthCalledWith(1, true)
     expect(runtime.setPaused).toHaveBeenNthCalledWith(2, false)
@@ -416,6 +472,10 @@ describe('一局会话 external seam', () => {
     expect(runtime.setPaused).toHaveBeenCalledOnce()
     expect(runtime.setPaused).toHaveBeenCalledWith(true)
     expect(snapshots.at(-1)?.pause.presentation).toBe('viewport')
+    session.setPlatformPause('viewport', false)
+    expect(snapshots.at(-1)?.pause.presentation).toBe('orientation-confirmation')
+    session.confirmOrientation()
+    expect(runtime.setPaused).toHaveBeenNthCalledWith(2, false)
   })
 
   it('结束后拒绝迟到的 runtime output，不覆盖 ended snapshot', () => {

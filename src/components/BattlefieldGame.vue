@@ -108,7 +108,8 @@ const onboardingStep = computed(() => props.showOnboarding ? sessionSnapshot.val
 const pausePresentation = computed(() => sessionSnapshot.value.pause.presentation)
 const pauseOverlayOpen = computed(() => pausePresentation.value === 'manual'
   || pausePresentation.value === 'orientation'
-  || pausePresentation.value === 'viewport')
+  || pausePresentation.value === 'viewport'
+  || pausePresentation.value === 'orientation-confirmation')
 const battlefieldStyle = computed(() => ({
   '--battle-aspect': viewport.value.aspectRatio.toString(),
 }))
@@ -119,6 +120,9 @@ const pauseTitle = computed(() => {
   if (pausePresentation.value === 'viewport') {
     return '请扩大窗口'
   }
+  if (pausePresentation.value === 'orientation-confirmation') {
+    return '横屏已恢复'
+  }
   return '暂避妖潮'
 })
 const pauseDescription = computed(() => {
@@ -127,6 +131,9 @@ const pauseDescription = computed(() => {
   }
   if (pausePresentation.value === 'viewport') {
     return '桌面战场至少需要 960 × 540 的可用空间。'
+  }
+  if (pausePresentation.value === 'orientation-confirmation') {
+    return '已恢复横屏，点击继续后战场才会恢复。'
   }
   return '自动攻击与妖潮已完全暂停。'
 })
@@ -233,6 +240,8 @@ function togglePause() {
 function continueRun() {
   if (pausePresentation.value === 'manual') {
     session.value?.releaseManualPause()
+  } else if (pausePresentation.value === 'orientation-confirmation') {
+    session.value?.confirmOrientation()
   }
 }
 
@@ -457,7 +466,7 @@ onUnmounted(() => {
           {{ pauseDescription }}
         </p>
         <button
-          v-if="pausePresentation === 'manual'"
+          v-if="pausePresentation === 'manual' || pausePresentation === 'orientation-confirmation'"
           class="game-button mt-7 w-full"
           type="button"
           @click="continueRun"

@@ -106,7 +106,7 @@ export type BattleRuntimeOutput =
   | { readonly type: 'run-ended'; readonly summary: RunSummary }
 
 export type GameSessionLifecycle = 'active' | 'ended' | 'disposed'
-export type PausePresentation = PlatformPauseReason | 'manual' | 'decision' | null
+export type PausePresentation = PlatformPauseReason | 'manual' | 'decision' | 'orientation-confirmation' | null
 
 export interface GameSessionSnapshot {
   readonly lifecycle: GameSessionLifecycle
@@ -129,6 +129,7 @@ export interface GameSessionCallbacks {
 export interface GameSession {
   requestManualPause(): void
   releaseManualPause(): void
+  confirmOrientation(): void
   setPlatformPause(reason: PlatformPauseReason, paused: boolean): void
   setPageVisible(visible: boolean): void
   setInputSuspended(suspended: boolean): void

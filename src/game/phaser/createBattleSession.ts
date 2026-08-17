@@ -2519,6 +2519,56 @@ class QingShiRidgeScene extends Phaser.Scene {
   }
 }
 
+interface BattleRuntimeSceneAdapter {
+  selectInitialArtifact(artifactId: BaseArtifactId): void
+  selectUpgrade(choiceId: string): void
+  selectAscension(choiceId: string): void
+  skipAscension(): void
+  deduceUpgrade(): void
+  tunaHeal(): void
+  skipOnboarding(): void
+  setInputIntent(intent: InputIntent): void
+  castSpell(): void
+  resizeViewport(width: number, height: number): void
+  setReducedMotion(reducedMotion: boolean): void
+  setPaused(paused: boolean): void
+}
+
+interface BattleGameAdapter {
+  readonly scale: {
+    setGameSize(width: number, height: number): void
+  }
+  destroy(removeCanvas?: boolean): void
+}
+
+export function createBattleRuntimeAdapter(
+  scene: BattleRuntimeSceneAdapter,
+  game: BattleGameAdapter,
+  renderScale: number,
+): BattleRuntime {
+  return {
+    selectInitialArtifact: (artifactId) => scene.selectInitialArtifact(artifactId),
+    selectUpgrade: (choiceId) => scene.selectUpgrade(choiceId),
+    selectAscension: (choiceId) => scene.selectAscension(choiceId),
+    skipAscension: () => scene.skipAscension(),
+    deduceUpgrade: () => scene.deduceUpgrade(),
+    tunaHeal: () => scene.tunaHeal(),
+    skipOnboarding: () => scene.skipOnboarding(),
+    setInputIntent: (intent) => scene.setInputIntent(intent),
+    castSpell: () => scene.castSpell(),
+    resize: (viewport) => {
+      game.scale.setGameSize(
+        viewport.internalWidth * renderScale,
+        viewport.internalHeight * renderScale,
+      )
+      scene.resizeViewport(viewport.internalWidth, viewport.internalHeight)
+    },
+    setReducedMotion: (reducedMotion) => scene.setReducedMotion(reducedMotion),
+    setPaused: (paused) => scene.setPaused(paused),
+    destroy: () => game.destroy(true),
+  }
+}
+
 export function createBattleSession(options: CreateGameSessionOptions) {
   let reportRuntimeOutput: (output: BattleRuntimeOutput) => void = () => undefined
   const scene = new QingShiRidgeScene(
@@ -2535,27 +2585,12 @@ export function createBattleSession(options: CreateGameSessionOptions) {
     options.practiceMode ?? false,
   )
   let game!: Phaser.Game
-  const runtime: BattleRuntime = {
-    selectInitialArtifact: (artifactId) => scene.selectInitialArtifact(artifactId),
-    selectUpgrade: (choiceId) => scene.selectUpgrade(choiceId),
-    selectAscension: (choiceId) => scene.selectAscension(choiceId),
-    skipAscension: () => scene.skipAscension(),
-    deduceUpgrade: () => scene.deduceUpgrade(),
-    tunaHeal: () => scene.tunaHeal(),
-    skipOnboarding: () => scene.skipOnboarding(),
-    setInputIntent: (intent) => scene.setInputIntent(intent),
-    castSpell: () => scene.castSpell(),
-    resize: (viewport) => {
-      game.scale.setGameSize(
-        viewport.internalWidth * options.renderScale,
-        viewport.internalHeight * options.renderScale,
-      )
-      scene.resizeViewport(viewport.internalWidth, viewport.internalHeight)
+  const runtime = createBattleRuntimeAdapter(scene, {
+    scale: {
+      setGameSize: (width, height) => game.scale.setGameSize(width, height),
     },
-    setReducedMotion: (reducedMotion) => scene.setReducedMotion(reducedMotion),
-    setPaused: (paused) => scene.setPaused(paused),
-    destroy: () => game.destroy(true),
-  }
+    destroy: (removeCanvas) => game.destroy(removeCanvas ?? true),
+  }, options.renderScale)
 
   const controller = createGameSessionController(runtime, {
     onSnapshot: options.onSnapshot,

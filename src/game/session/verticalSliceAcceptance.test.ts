@@ -149,6 +149,7 @@ describe('核心切片与构筑验收 (Issue #9)', () => {
     expect(currentPaused).toBe(true) // Still paused due to orientation
 
     session.setPlatformPause('orientation', false)
+    session.confirmOrientation()
     expect(currentPaused).toBe(false)
   })
 })

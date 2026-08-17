@@ -14,6 +14,7 @@ const battleHarness = vi.hoisted(() => ({
   session: {
     requestManualPause: vi.fn(),
     releaseManualPause: vi.fn(),
+    confirmOrientation: vi.fn(),
     setPlatformPause: vi.fn(),
     setPageVisible: vi.fn(),
     setInputSuspended: vi.fn(),
@@ -135,6 +136,28 @@ describe('BattlefieldGame input adapter', () => {
     expect(wrapper.get('[aria-label="战场事件说明"]').text()).toContain('灵泉涌现')
     await wrapper.get('[aria-label="战场事件说明"] button').trigger('click')
     expect(battleHarness.session.confirmBattlefieldEvent).toHaveBeenCalledWith('decision-event')
+    wrapper.unmount()
+  })
+
+  it('requires explicit confirmation after returning to landscape', async () => {
+    const wrapper = mount(BattlefieldGame, {
+      props: { settings: DEFAULT_GAME_SETTINGS, showOnboarding: false },
+    })
+
+    battleHarness.onSnapshot?.({
+      lifecycle: 'active',
+      pause: { active: true, presentation: 'orientation-confirmation' },
+      decision: null,
+      hud: null,
+      onboardingStep: null,
+      onboardingCompleted: true,
+      result: null,
+    })
+    await nextTick()
+
+    expect(wrapper.get('[aria-label="历练暂停"]').text()).toContain('横屏已恢复')
+    await wrapper.get('[aria-label="历练暂停"] button').trigger('click')
+    expect(battleHarness.session.confirmOrientation).toHaveBeenCalledOnce()
     wrapper.unmount()
   })
 })
