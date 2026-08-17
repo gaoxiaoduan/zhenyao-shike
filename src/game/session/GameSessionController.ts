@@ -40,6 +40,14 @@ const NOOP_CALLBACKS: GameSessionCallbacks = {
   onEffect: () => undefined,
 }
 
+type SessionPauseReason = PlatformPauseReason | 'manual' | 'decision'
+
+interface PauseReasonUpdate {
+  readonly reason: SessionPauseReason
+  readonly active: boolean
+  readonly clearInput?: boolean
+}
+
 function freezeDecision(decision: GameSessionDecision): GameSessionDecision {
   if (decision.type === 'initial-artifact-selection') {
     return Object.freeze({
@@ -81,7 +89,7 @@ export function createGameSessionController(
   callbacks: Partial<GameSessionCallbacks> = {},
 ): GameSessionController {
   const sessionCallbacks: GameSessionCallbacks = { ...NOOP_CALLBACKS, ...callbacks }
-  const pauseReasons = new Set<PlatformPauseReason | 'manual' | 'decision'>()
+  const pauseReasons = new Set<SessionPauseReason>()
   let disposed = false
   let paused = false
   let lifecycle: GameSessionLifecycle = 'active'
@@ -206,32 +214,44 @@ export function createGameSessionController(
     }
   }
 
-  function setPauseReason(
-    reason: PlatformPauseReason | 'manual' | 'decision',
-    active: boolean,
-    clearInput = false,
-  ): boolean {
+  function setPauseReasons(updates: readonly PauseReasonUpdate[]): boolean {
     if (disposed || lifecycle !== 'active') {
       return false
     }
 
-    if (active) {
-      if (pauseReasons.has(reason)) {
-        return false
+    let changed = false
+    for (const update of updates) {
+      if (update.active) {
+        if (pauseReasons.has(update.reason)) {
+          continue
+        }
+        if (update.clearInput) {
+          clearMovementIntent()
+        }
+        pauseReasons.add(update.reason)
+        changed = true
+        continue
       }
-      if (clearInput) {
-        clearMovementIntent()
-      }
-      pauseReasons.add(reason)
-    } else {
-      if (!pauseReasons.delete(reason)) {
-        return false
+
+      if (pauseReasons.delete(update.reason)) {
+        changed = true
       }
     }
 
+    if (!changed) {
+      return false
+    }
     syncPauseState()
     publish()
     return true
+  }
+
+  function setPauseReason(
+    reason: SessionPauseReason,
+    active: boolean,
+    clearInput = false,
+  ): boolean {
+    return setPauseReasons([{ reason, active, clearInput }])
   }
 
   function beginDecision(nextDecision: GameSessionDecision) {
@@ -276,7 +296,7 @@ export function createGameSessionController(
   }
 
   function reportRuntimeOutput(output: BattleRuntimeOutput) {
-    if (disposed || lifecycle === 'disposed') {
+    if (disposed || lifecycle !== 'active') {
       return
     }
 
@@ -464,8 +484,10 @@ export function createGameSessionController(
         return
       }
       runtime.resize(viewport)
-      setPauseReason('orientation', viewport.requiresOrientation)
-      setPauseReason('viewport', viewport.requiresLargerWindow)
+      setPauseReasons([
+        { reason: 'orientation', active: viewport.requiresOrientation },
+        { reason: 'viewport', active: viewport.requiresLargerWindow },
+      ])
     },
     setReducedMotion(reducedMotion) {
       if (disposed || lifecycle !== 'active') {

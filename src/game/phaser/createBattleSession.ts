@@ -642,6 +642,9 @@ class QingShiRidgeScene extends Phaser.Scene {
 
     this.emitAudio('ui-back')
     this.updateHudText()
+    if (this.pendingLevelUps > 0) {
+      this.triggerNextUpgradeIfAvailable()
+    }
   }
 
   selectAscension(choiceId: string) {
