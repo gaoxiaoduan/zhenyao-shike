@@ -202,7 +202,7 @@ interface DeathBurst {
   remainingMs: number
 }
 
-class QingShiRidgeScene extends Phaser.Scene {
+export class QingShiRidgeScene extends Phaser.Scene {
   private readonly reportRuntimeOutput: (event: BattleRuntimeOutput) => void
   private readonly renderScale: number
   private readonly compactRadar: boolean
@@ -584,8 +584,12 @@ class QingShiRidgeScene extends Phaser.Scene {
 
     if (this.pendingLevelUps > 0) {
       this.triggerNextUpgradeIfAvailable()
-    } else if (this.ascensionChoices.length > 0) {
-      this.beginAscensionSelection(this.ascensionChoices)
+    } else {
+      const ascensionChoices = getAvailableAscensionChoices(this.inventory)
+      this.ascensionChoices = ascensionChoices
+      if (ascensionChoices.length > 0) {
+        this.beginAscensionSelection(ascensionChoices)
+      }
     }
   }
 

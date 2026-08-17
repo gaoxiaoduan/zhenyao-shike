@@ -1,10 +1,18 @@
 import { describe, expect, it, vi } from 'vitest'
+import {
+  applyUpgradeChoice,
+  ARTIFACT_DEFINITIONS,
+  createArtifactInventory,
+  type ArtifactInventory,
+  type UpgradeDraftChoice,
+} from '../domain/artifactInventory'
 import { createInputIntent } from '../domain/inputIntent'
 import type { BattleViewport } from '../platform/viewportPolicy'
-import { createBattleRuntimeAdapter } from './createBattleSession'
+import { createBattleRuntimeAdapter, QingShiRidgeScene } from './createBattleSession'
 
 vi.mock('phaser', () => ({
   Scene: class Scene {},
+  Math: { Between: (min: number) => min },
 }))
 
 function createScene() {
@@ -69,5 +77,56 @@ describe('Phaser battle runtime adapter', () => {
     expect(scene.setReducedMotion).toHaveBeenCalledWith(true)
     expect(scene.setPaused).toHaveBeenCalledWith(true)
     expect(game.destroy).toHaveBeenCalledWith(true)
+  })
+
+  it('publishes an ascension request when the final upgrade creates a recipe', () => {
+    const outputs: Array<{ type: string }> = []
+    const scene = new QingShiRidgeScene(
+      (output) => outputs.push(output),
+      1,
+      false,
+      1280,
+      720,
+      false,
+      7301,
+      1,
+    )
+    let inventory: ArtifactInventory = createArtifactInventory('qing-feng-jian-xia')
+    for (let level = 1; level < 4; level += 1) {
+      inventory = applyUpgradeChoice(inventory, 'qing-feng-jian-xia')
+    }
+    inventory = applyUpgradeChoice(inventory, 'si-xiang-zhen-qi')
+    for (let level = 1; level < 5; level += 1) {
+      inventory = applyUpgradeChoice(inventory, 'si-xiang-zhen-qi')
+    }
+
+    const qingFeng = ARTIFACT_DEFINITIONS['qing-feng-jian-xia']
+    const choice: UpgradeDraftChoice = {
+      type: 'upgrade',
+      choiceId: 'upgrade-qing-feng-jian-xia',
+      artifactId: 'qing-feng-jian-xia',
+      name: qingFeng.name,
+      description: qingFeng.description,
+      currentLevel: 4,
+      targetLevel: 5,
+      statsDescription: '伤害提升',
+      attackColor: qingFeng.attackColor,
+    }
+    const state = scene as unknown as {
+      inventory: ArtifactInventory
+      pendingLevelUps: number
+      awaitingUpgradeSelection: boolean
+      upgradeChoices: readonly UpgradeDraftChoice[]
+      ascensionChoices: readonly unknown[]
+    }
+    state.inventory = inventory
+    state.pendingLevelUps = 1
+    state.awaitingUpgradeSelection = true
+    state.upgradeChoices = [choice]
+    state.ascensionChoices = []
+
+    scene.selectUpgrade(choice.choiceId)
+
+    expect(outputs).toContainEqual(expect.objectContaining({ type: 'ascension-requested' }))
   })
 })
