@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import caveBackgroundUrl from '../../assets/game/qingshi-cave-home.png'
+import ReplayTargetCard from '../home/ReplayTargetCard.vue'
+import type { ReplayTarget } from '../../game/domain/replayTarget'
+import { BATTLEFIELD_EVENT_COPY } from '../../game/domain/runEventPresentation'
 import type { RunHistorySnapshot } from '../../game/domain/runRecord'
 import type { DamageSource, RunSummary } from '../../game/domain/runSummary'
 import ArtifactIcon from '../game/ArtifactIcon.vue'
@@ -10,9 +13,14 @@ const props = withDefaults(defineProps<{
   practiceMode?: boolean
   persistenceStatus?: 'persisted' | 'session-only'
   runHistory?: RunHistorySnapshot
+  replayTarget?: ReplayTarget
+  previousReplayTarget?: ReplayTarget | null
+  previousReplayTargetCompleted?: boolean
 }>(), {
   practiceMode: false,
   persistenceStatus: 'persisted',
+  previousReplayTarget: null,
+  previousReplayTargetCompleted: false,
 })
 
 const emit = defineEmits<{
@@ -28,11 +36,6 @@ const damageLabels: Readonly<Record<DamageSource, string>> = {
   'moon-howl': '月啸',
   unknown: '历练终止',
 }
-
-const eventLabels = {
-  'demon-lair': '妖巢暴动',
-  lingquan: '灵泉涌现',
-} as const
 
 function formatTime(elapsedMs: number) {
   const totalSeconds = Math.floor(elapsedMs / 1000)
@@ -90,10 +93,10 @@ function formatTime(elapsedMs: number) {
       </section>
 
       <div class="result-event" :class="{ 'is-complete': props.summary.completedEvents.includes('demon-lair') }">
-        <span>战场事件 · 妖巢暴动</span>
+        <span>战场事件 · {{ BATTLEFIELD_EVENT_COPY['demon-lair'].name }}</span>
         <strong>
           {{ props.summary.completedEvents.includes('demon-lair') ? '妖巢暴动已完成' : '妖巢暴动未完成' }}
-          <template v-if="props.summary.completedEvents.includes('lingquan')"> · {{ eventLabels.lingquan }}已完成</template>
+          <template v-if="props.summary.completedEvents.includes('lingquan')"> · {{ BATTLEFIELD_EVENT_COPY.lingquan.name }}已完成</template>
         </strong>
       </div>
 
@@ -101,6 +104,14 @@ function formatTime(elapsedMs: number) {
         <small>{{ props.summary.result === 'victory' ? '构筑札记' : '破局提示' }}</small>
         <p>{{ props.summary.hint }}</p>
       </aside>
+
+      <ReplayTargetCard
+        v-if="!props.practiceMode && props.replayTarget"
+        :target="props.replayTarget"
+        :previous-target="props.previousReplayTarget"
+        :previous-target-completed="props.previousReplayTargetCompleted"
+        variant="result"
+      />
 
       <footer class="result-actions">
         <button class="game-button" type="button" aria-label="再次进入青石岭" @click="emit('retry')">再次历练</button>

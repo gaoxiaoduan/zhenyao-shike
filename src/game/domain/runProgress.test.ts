@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   GROWTH_PHASE_DURATION_MS,
   advanceRunProgress,
+  calculateRunElapsedMs,
   createRunProgress,
   endRun,
   experienceRequiredForLevel,
@@ -44,5 +45,10 @@ describe('run progress', () => {
 
   it('formats elapsed time for the battle HUD', () => {
     expect(formatElapsedTime(65_900)).toBe('01:05')
+  })
+
+  it('adds the dedicated boss duration to the growth clock for the final run time', () => {
+    expect(calculateRunElapsedMs(GROWTH_PHASE_DURATION_MS, 96_000)).toBe(696_000)
+    expect(calculateRunElapsedMs(120_000, null)).toBe(120_000)
   })
 })

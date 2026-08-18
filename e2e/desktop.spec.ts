@@ -47,7 +47,7 @@ function createHistorySave() {
       id: 'run-e2e',
       recordedAtMs: 1_700_000_000_000,
       result: 'victory',
-      elapsedMs: 180_000,
+      elapsedMs: 642_000,
       defeatedEnemies: 55,
       defeatedElites: 2,
       bossElapsedMs: 42_000,
@@ -56,9 +56,9 @@ function createHistorySave() {
       finalDamageSource: 'unknown',
     }],
     best: {
-      fastestVictoryMs: 180_000,
+      fastestVictoryMs: 642_000,
       mostKills: 55,
-      longestSurvivalMs: 180_000,
+      longestSurvivalMs: 642_000,
     },
     firstVictoryRecorded: true,
   }
@@ -109,6 +109,7 @@ test('opens the polished cave hub and persists audio settings', async ({ page })
 
 test('opens saved personal 历练记录 from the cave hub', async ({ page }) => {
   await seedBrowserSave(page, 'zhenyao-shike.run-history.v3', createHistorySave())
+  await expect(page.getByLabel('再来一把目标')).toContainText('更快镇压妖王')
   await page.getByRole('button', { name: '打开历练记录' }).click()
 
   await expect(page.getByRole('dialog', { name: '历练记录' })).toContainText('最快胜场')

@@ -79,6 +79,7 @@ import type { OnboardingStep } from '../domain/onboardingProgress'
 import { advancePlayerDamageState, resolvePlayerDamage, type PlayerDamageKind } from '../domain/playerDamageRules'
 import {
   advanceRunProgress,
+  calculateRunElapsedMs,
   createRunProgress,
   endRun,
   grantExperience,
@@ -86,6 +87,7 @@ import {
   type RunProgress,
 } from '../domain/runProgress'
 import { createRunSummary, type DamageSource, type RunEventId, type RunResult } from '../domain/runSummary'
+import { BATTLEFIELD_EVENT_COPY } from '../domain/runEventPresentation'
 import {
   advanceWolfKingEncounter,
   createWolfKingEncounter,
@@ -118,7 +120,6 @@ import {
 } from '../domain/deductionAndZhouTian'
 import type {
   BattleInstrumentationSnapshot,
-  BattlefieldEventKind,
   CreateGameSessionOptions,
   BattleRuntimeOutput,
 } from '../session/GameSession'
@@ -130,35 +131,6 @@ const HUD_INTERVAL_MS = 120
 const SPELL_COOLDOWN_MS = 10_000
 const SPELL_SHIELD_DURATION_MS = 1_500
 const RESULT_FREEZE_MS = 600
-
-const BATTLEFIELD_EVENT_COPY: Record<BattlefieldEventKind, {
-  readonly name: string
-  readonly reward: string
-  readonly objectives: {
-    readonly report: string
-    readonly travel: string
-    readonly active: string
-  }
-}> = {
-  'demon-lair': {
-    name: '妖巢暴动',
-    objectives: {
-      report: '45 秒内前往妖巢；抵达后有独立 60 秒战斗期，摧毁妖巢并击败守巢精英。',
-      travel: '45 秒内前往妖巢',
-      active: '60 秒内摧毁妖巢并击败守巢精英',
-    },
-    reward: '40 灵蕴 · +1 推演 · 结算 8 灵石',
-  },
-  lingquan: {
-    name: '灵泉涌现',
-    objectives: {
-      report: '45 秒内前往青蓝区域并维持两秒引导，恢复生命并扩大灵蕴拾取范围。',
-      travel: '45 秒内前往青蓝区域',
-      active: '完成两秒引导，恢复生命并扩大拾取范围',
-    },
-    reward: '恢复 35% 最大生命 · 拾取范围 ×2（30 秒）',
-  },
-}
 
 const ABANDONED_VILLAGE = { x: 1160, y: 1040, width: 290, height: 190 } as const
 
@@ -311,7 +283,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
   private randomState = 1
   private boss?: WolfKingEncounter
   private bossSpatial?: BossSpatialState
-  private bossStartedElapsedMs: number | null = null
+  private bossStartedPresentationElapsedMs: number | null = null
   private bossHowlRemainingMs = 0
   private bossHowlElapsedMs = 0
   private bossHowlDirectionX = 0
@@ -807,7 +779,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
     const angle = this.randomBetween(0, Math.PI * 2)
     const distance = 180
     this.boss = createWolfKingEncounter()
-    this.bossStartedElapsedMs = this.progress.elapsedMs
+    this.bossStartedPresentationElapsedMs = this.presentationElapsedMs
     this.bossSpatial = {
       kind: 'boss',
       x: Phaser.Math.Clamp(this.player.x + Math.cos(angle) * distance, 80, WORLD_SIZE - 80),
@@ -1059,14 +1031,15 @@ export class QingShiRidgeScene extends Phaser.Scene {
     this.progress = endRun(this.progress)
     this.inputIntent = createInputIntent()
     this.reportRuntimeOutput({ type: 'run-ending', result, source: this.finalDamageSource })
+    const bossElapsedMs = this.bossStartedPresentationElapsedMs === null
+      ? null
+      : Math.max(0, this.presentationElapsedMs - this.bossStartedPresentationElapsedMs)
     const summary = createRunSummary({
       result,
-      elapsedMs: this.progress.elapsedMs,
+      elapsedMs: calculateRunElapsedMs(this.progress.elapsedMs, bossElapsedMs),
       defeatedEnemies: this.defeatedEnemies,
       defeatedElites: this.defeatedElites,
-      bossElapsedMs: this.bossStartedElapsedMs === null
-        ? null
-        : Math.max(0, this.progress.elapsedMs - this.bossStartedElapsedMs),
+      bossElapsedMs,
       completedEvents: [
         ...(this.demonLair.phase === 'completed' ? ['demon-lair' as const] : []),
         ...(this.lingquanEvent.phase === 'completed' ? ['lingquan' as const] : []),

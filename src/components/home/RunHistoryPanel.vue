@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { RunEventId } from '../../game/domain/runSummary'
+import { BATTLEFIELD_EVENT_COPY } from '../../game/domain/runEventPresentation'
 import type { RunHistoryEntry, RunHistorySnapshot } from '../../game/domain/runRecord'
 
 const props = defineProps<{
@@ -9,11 +10,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
 }>()
-
-const eventLabels: Readonly<Record<RunEventId, string>> = {
-  'demon-lair': '妖巢暴动',
-  lingquan: '灵泉涌现',
-}
 
 const damageLabels: Readonly<Record<RunHistoryEntry['finalDamageSource'], string>> = {
   'ordinary-enemy': '寻常妖物围攻',
@@ -36,7 +32,7 @@ function formatDate(recordedAtMs: number): string {
 }
 
 function eventLabel(event: RunEventId): string {
-  return eventLabels[event]
+  return BATTLEFIELD_EVENT_COPY[event].name
 }
 
 function buildLabel(entry: RunHistoryEntry): string {

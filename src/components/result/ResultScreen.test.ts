@@ -20,6 +20,22 @@ const summary: RunSummary = {
   hint: '换一条构筑路线试试。',
 }
 
+const replayTarget = {
+  id: 'fast-victory-645000',
+  kind: 'fast-victory' as const,
+  goalMs: 645_000,
+  title: '更快镇压妖王',
+  description: '在 10:45 内击败啸月狼王，比个人最快胜场再快一步。',
+}
+
+const previousReplayTarget = {
+  id: 'survival-150000',
+  kind: 'survival' as const,
+  goalMs: 150_000,
+  title: '先撑过 02:30',
+  description: '把坚持时间推到 02:30，为下一次升级多留一段走位空间。',
+}
+
 describe('ResultScreen', () => {
   it('shows the run record and exposes the retry action', async () => {
     const wrapper = mount(ResultScreen, { props: { summary, newRecord: true, runHistory: createEmptyRunHistory() } })
@@ -47,5 +63,21 @@ describe('ResultScreen', () => {
     })
 
     expect(wrapper.text()).toContain('本局记录仅保留在当前会话')
+  })
+
+  it('shows the next replay target and completion feedback after a normal run', () => {
+    const wrapper = mount(ResultScreen, {
+      props: {
+        summary,
+        newRecord: true,
+        replayTarget,
+        previousReplayTarget,
+        previousReplayTargetCompleted: true,
+      },
+    })
+
+    expect(wrapper.get('[aria-label="再来一把目标"]').text()).toContain('下一局目标')
+    expect(wrapper.text()).toContain('上一局目标已完成')
+    expect(wrapper.text()).toContain('更快镇压妖王')
   })
 })

@@ -1,5 +1,9 @@
 export const GROWTH_PHASE_DURATION_MS = 10 * 60 * 1000
 
+export function calculateRunElapsedMs(growthElapsedMs: number, bossElapsedMs: number | null): number {
+  return Math.max(0, growthElapsedMs) + Math.max(0, bossElapsedMs ?? 0)
+}
+
 export type RunPhase = 'growth' | 'boss' | 'ended'
 
 export interface RunProgress {

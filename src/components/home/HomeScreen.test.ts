@@ -4,6 +4,14 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import HomeScreen from './HomeScreen.vue'
 
+const replayTarget = {
+  id: 'survival-150000',
+  kind: 'survival' as const,
+  goalMs: 150_000,
+  title: '先撑过 02:30',
+  description: '把坚持时间推到 02:30，为下一次升级多留一段走位空间。',
+}
+
 describe('HomeScreen', () => {
   it('starts a run from the visible primary action', async () => {
     const wrapper = mount(HomeScreen, { props: { fullscreenAvailable: true } })
@@ -27,5 +35,11 @@ describe('HomeScreen', () => {
 
     expect(wrapper.emitted('openHistory')).toHaveLength(1)
     expect(wrapper.emitted('compactStart')).toHaveLength(1)
+  })
+
+  it('shows the current replay target before a new run starts', () => {
+    const wrapper = mount(HomeScreen, { props: { fullscreenAvailable: true, replayTarget } })
+
+    expect(wrapper.get('[aria-label="再来一把目标"]').text()).toContain('先撑过 02:30')
   })
 })

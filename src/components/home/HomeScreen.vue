@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import caveBackgroundUrl from '../../assets/game/qingshi-cave-home.png'
+import type { ReplayTarget } from '../../game/domain/replayTarget'
 import type { RunHistorySnapshot } from '../../game/domain/runRecord'
+import ReplayTargetCard from './ReplayTargetCard.vue'
 
 const props = withDefaults(defineProps<{
   fullscreenAvailable: boolean
   bossPracticeUnlocked?: boolean
   runHistory?: RunHistorySnapshot
+  replayTarget?: ReplayTarget
 }>(), {
   bossPracticeUnlocked: false,
 })
@@ -62,6 +65,8 @@ const historyCount = computed(() => props.runHistory?.entries.length ?? 0)
         <span><small>妖王</small>啸月狼王</span>
         <span><small>目标</small>生存 · 构筑 · 镇压</span>
       </div>
+
+      <ReplayTargetCard v-if="props.replayTarget" :target="props.replayTarget" />
 
       <button
         class="home-screen__start"
