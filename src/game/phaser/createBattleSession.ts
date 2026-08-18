@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser'
 import actorAtlasUrl from '../../assets/game/qingshi-actors.png'
+import combatActorAtlasUrl from '../../assets/game/qingshi-combat-actors.png'
 import groundTextureUrl from '../../assets/game/qingshi-ground.png'
 import { musicStageForRun, type MusicStage, type SoundCue } from '../audio/audioDirector'
 import {
@@ -48,6 +49,7 @@ import {
 import {
   resolveArtifactVisualSignature,
   resolveBossPresentation,
+  resolveCombatVisualSignature,
   resolveEnemyPresentation,
 } from '../domain/combatPresentation'
 import {
@@ -349,6 +351,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
   preload() {
     this.load.image('qingshi-ground', groundTextureUrl)
     this.load.spritesheet('qingshi-actors', actorAtlasUrl, { frameWidth: 512, frameHeight: 512 })
+    this.load.spritesheet('qingshi-combat-actors', combatActorAtlasUrl, { frameWidth: 256, frameHeight: 768 })
   }
 
   create() {
@@ -746,7 +749,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
       chargeDirectionX: 0,
       chargeDirectionY: 0,
       sprite: this.add
-        .image(this.player.x, this.player.y, 'qingshi-actors', 5)
+        .image(this.player.x, this.player.y, 'qingshi-combat-actors', 4)
         .setDisplaySize(172, 172)
         .setDepth(4),
     }
@@ -1875,7 +1878,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
     }
 
     enemy.health = resolveDamage(enemy.health, Math.round(damage * enemy.vulnerableMultiplier))
-    enemy.hitFlashMs = 80
+    enemy.hitFlashMs = this.reducedMotion ? 0 : 80
     this.spawnCombatBurst('hit', enemy.x, enemy.y, enemy.color, 120, enemy.radius + 8)
     if (this.hitAudioCooldownMs === 0) {
       this.emitAudio('ordinary-hit')
@@ -1960,18 +1963,21 @@ export class QingShiRidgeScene extends Phaser.Scene {
   }
 
   private createEnemySprite(id: string, x: number, y: number, radius: number) {
-    const frame = id === 'qing-shi-ridge-boar-demon'
-      ? 1
-      : id === 'qing-shi-ridge-mist-moth'
-        ? 3
-        : id === 'qing-shi-ridge-elite-wolf'
-          ? 4
-          : 2
-    const sprite = this.enemySpritePool.pop() ?? this.add.image(x, y, 'qingshi-actors', frame)
+    const textureKey = id === 'xiaoyue-wolf-king-moon-shadow' ? 'qingshi-combat-actors' : 'qingshi-actors'
+    const frame = textureKey === 'qingshi-combat-actors'
+      ? 0
+      : id === 'qing-shi-ridge-boar-demon'
+        ? 1
+        : id === 'qing-shi-ridge-mist-moth'
+          ? 3
+          : id === 'qing-shi-ridge-elite-wolf'
+            ? 4
+            : 2
+    const sprite = this.enemySpritePool.pop() ?? this.add.image(x, y, textureKey, frame)
     return sprite
       .setActive(true)
       .setVisible(true)
-      .setTexture('qingshi-actors', frame)
+      .setTexture(textureKey, frame)
       .setPosition(x, y)
       .setDisplaySize(radius * 4.8, radius * 4.8)
       .setAlpha(1)
@@ -2302,14 +2308,15 @@ export class QingShiRidgeScene extends Phaser.Scene {
 
     // Render protective spell aura if cast recently
     if (this.shieldRemainingMs > 0) {
-      this.graphics.lineStyle(4, 0xd8f3ff, 0.7).strokeCircle(this.player.x, this.player.y, 88)
-      this.graphics.fillStyle(0x7dd3fc, 0.08).fillCircle(this.player.x, this.player.y, 88)
-      this.graphics.lineStyle(2, 0xe0f2fe, 0.56).strokeCircle(this.player.x, this.player.y, 62)
+      const signature = resolveCombatVisualSignature('xuan-guang-hu-shen-jue')
+      this.graphics.lineStyle(signature.trailWidth + 1, signature.accentColor, 0.7).strokeCircle(this.player.x, this.player.y, 88)
+      this.graphics.fillStyle(signature.accentColor, 0.08).fillCircle(this.player.x, this.player.y, 88)
+      this.graphics.lineStyle(2, signature.accentColor, 0.56).strokeCircle(this.player.x, this.player.y, 62)
       for (let index = 0; index < 4; index += 1) {
         const angle = this.playerMotionPhase * 0.015 + index * Math.PI / 2
         const symbolX = this.player.x + Math.cos(angle) * 62
         const symbolY = this.player.y + Math.sin(angle) * 62
-        this.graphics.fillStyle(0xe0f2fe, 0.85).fillTriangle(
+        this.graphics.fillStyle(signature.accentColor, 0.85).fillTriangle(
           symbolX,
           symbolY - 5,
           symbolX + 5,
@@ -2320,13 +2327,14 @@ export class QingShiRidgeScene extends Phaser.Scene {
       }
     }
     if (this.spellCastVisualRemainingMs > 0 || this.spellImpactPulseRemainingMs > 0 || this.spellEndVisualRemainingMs > 0) {
+      const signature = resolveCombatVisualSignature('xuan-guang-hu-shen-jue')
       const pulseMs = Math.max(this.spellCastVisualRemainingMs, this.spellImpactPulseRemainingMs, this.spellEndVisualRemainingMs)
       const progress = 1 - pulseMs / 520
       const radius = 35 + Math.min(135, Math.max(0, progress) * 170)
       const alpha = this.reducedMotion ? 0.5 : Math.min(0.9, pulseMs / 220)
-      this.graphics.lineStyle(4, 0xbae6fd, alpha)
+      this.graphics.lineStyle(signature.trailWidth + 1, signature.accentColor, alpha)
       this.graphics.strokeCircle(this.player.x, this.player.y, radius)
-      this.graphics.lineStyle(2, 0xe0f2fe, alpha * 0.8)
+      this.graphics.lineStyle(2, signature.accentColor, alpha * 0.8)
       this.graphics.lineBetween(this.player.x - radius, this.player.y, this.player.x + radius, this.player.y)
       this.graphics.lineBetween(this.player.x, this.player.y - radius, this.player.x, this.player.y + radius)
     }
@@ -2484,12 +2492,14 @@ export class QingShiRidgeScene extends Phaser.Scene {
     const directionY = projectile.velocityY / velocityLength
     const normalX = -directionY
     const normalY = directionX
-    const trailLength = this.reducedMotion ? 0.55 : 1
+    const trailLength = this.reducedMotion ? 0 : 1
     const tailX = projectile.x - projectile.velocityX * 0.035 * trailLength
     const tailY = projectile.y - projectile.velocityY * 0.035 * trailLength
     const accent = signature.accentColor
 
-    this.graphics.lineStyle(signature.trailWidth, accent, 0.9).lineBetween(tailX, tailY, projectile.x, projectile.y)
+    if (!this.reducedMotion) {
+      this.graphics.lineStyle(signature.trailWidth, accent, 0.9).lineBetween(tailX, tailY, projectile.x, projectile.y)
+    }
     if (signature.macroShape === 'flying-sword' || signature.macroShape === 'floating-sword-rain') {
       const tipX = projectile.x + directionX * 10
       const tipY = projectile.y + directionY * 10
@@ -2559,6 +2569,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
       attackVisualRemainingMs: enemy.attackVisualRemainingMs,
     })
     enemy.sprite
+      .setTexture(presentation.textureKey, presentation.frame)
       .setPosition(enemy.x, enemy.y - presentation.bob)
       .setFlipX(presentation.flipX)
       .setAngle(presentation.angle)
@@ -2635,6 +2646,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
     const x = this.bossSpatial.x + presentation.shake
     const y = this.bossSpatial.y + presentation.shake
     this.bossSpatial.sprite
+      .setTexture(presentation.textureKey, presentation.frame)
       .setPosition(x, y)
       .setAlpha(presentation.alpha)
       .setTint(presentation.tint)

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ArtifactId } from './artifactInventory'
 import {
+  resolveCombatVisualSignature,
   resolveArtifactVisualSignature,
   resolveBossPresentation,
   resolveEnemyPresentation,
@@ -63,6 +64,8 @@ describe('semantic combat presentation', () => {
     })
 
     expect(presentation.silhouette).toBe('moon-shadow')
+    expect(presentation.textureKey).toBe('qingshi-combat-actors')
+    expect(presentation.frame).toBe(0)
     expect(presentation.tint).toBe(0x2e1065)
     expect(presentation.telegraph).toBe('moon-shadow')
     expect(presentation.bob).toBe(0)
@@ -89,6 +92,8 @@ describe('semantic combat presentation', () => {
     })
 
     expect(enraged.halo).toBe('cracked-moon')
+    expect(enraged.textureKey).toBe('qingshi-combat-actors')
+    expect(enraged.frame).toBe(6)
     expect(enraged.shadowSplit).toBe(true)
     expect(enraged.telegraph).toBe('assault-lane')
     expect(breach.halo).toBe('breach-open')
@@ -119,5 +124,13 @@ describe('semantic combat presentation', () => {
     ])
     expect(signatures.slice(4).every((signature) => signature.isHighTier)).toBe(true)
     expect(new Set(signatures.map((signature) => signature.macroShape)).size).toBe(signatures.length)
+  })
+
+  it('gives 玄光护身诀 a stable spell signature without treating it as a 法器', () => {
+    const signature = resolveCombatVisualSignature('xuan-guang-hu-shen-jue')
+
+    expect(signature.family).toBe('spell')
+    expect(signature.macroShape).toBe('protective-talisman-shield')
+    expect(signature.sourceMotif).toContain('结印玄光')
   })
 })

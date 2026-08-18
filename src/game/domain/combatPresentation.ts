@@ -29,6 +29,7 @@ export interface EnemyPresentationInput {
 }
 
 export interface EnemyPresentation {
+  readonly textureKey: 'qingshi-actors' | 'qingshi-combat-actors'
   readonly frame: number
   readonly silhouette: EnemyVisualSilhouette
   readonly pose: EnemyVisualPose
@@ -134,9 +135,19 @@ export function resolveEnemyPresentation(input: EnemyPresentationInput): EnemyPr
         : pose === 'recover' && isVulnerable
           ? (input.facingX < 0 ? -1 : 1) * -9
           : 0
+  const frame = silhouette === 'moon-shadow'
+    ? pose === 'windup'
+      ? 1
+      : pose === 'attack'
+        ? 2
+        : pose === 'recover'
+          ? 3
+          : 0
+    : palette.frame
 
   return {
-    frame: palette.frame,
+    textureKey: silhouette === 'moon-shadow' ? 'qingshi-combat-actors' : 'qingshi-actors',
+    frame,
     silhouette,
     pose,
     telegraph,
@@ -151,7 +162,7 @@ export function resolveEnemyPresentation(input: EnemyPresentationInput): EnemyPr
   }
 }
 
-export type ArtifactVisualFamily = 'sword' | 'thunder' | 'array' | 'wind'
+export type ArtifactVisualFamily = 'sword' | 'thunder' | 'array' | 'wind' | 'spell'
 
 export type ArtifactMacroShape =
   | 'flying-sword'
@@ -161,6 +172,7 @@ export type ArtifactMacroShape =
   | 'floating-sword-rain'
   | 'light-sword-wing'
   | 'nine-heavens-thunder-array'
+  | 'protective-talisman-shield'
 
 export interface ArtifactVisualSignature {
   readonly family: ArtifactVisualFamily
@@ -234,6 +246,23 @@ export function resolveArtifactVisualSignature(artifactId: ArtifactId): Artifact
   return ARTIFACT_SIGNATURES[artifactId]
 }
 
+export type CombatPresentationSignatureId = ArtifactId | 'xuan-guang-hu-shen-jue'
+
+const PROTECTIVE_SPELL_SIGNATURE: ArtifactVisualSignature = {
+  family: 'spell',
+  macroShape: 'protective-talisman-shield',
+  sourceMotif: '结印玄光 · 四符护身',
+  accentColor: 0xbae6fd,
+  isHighTier: false,
+  trailWidth: 3,
+}
+
+export function resolveCombatVisualSignature(id: CombatPresentationSignatureId): ArtifactVisualSignature {
+  return id === 'xuan-guang-hu-shen-jue'
+    ? PROTECTIVE_SPELL_SIGNATURE
+    : resolveArtifactVisualSignature(id)
+}
+
 export type BossVisualHalo = 'arrival-pulse' | 'broken-moon' | 'cracked-moon' | 'breach-open'
 export type BossTelegraph = 'none' | 'charge-lane' | 'assault-lane' | 'howl-sector'
 
@@ -249,6 +278,8 @@ export interface BossPresentationInput {
 }
 
 export interface BossPresentation {
+  readonly textureKey: 'qingshi-combat-actors'
+  readonly frame: number
   readonly halo: BossVisualHalo
   readonly telegraph: BossTelegraph
   readonly tint: number
@@ -283,8 +314,19 @@ export function resolveBossPresentation(input: BossPresentationInput): BossPrese
   const shake = input.reducedMotion || isArrival || impactRemainingMs <= 0
     ? 0
     : Math.sin(input.elapsedMs / 28) * (isEnraged ? 1.5 : 0.8) * Math.min(1, impactRemainingMs / 120)
+  const frame = isEnraged
+    ? input.breachRemainingMs > 0
+      ? 7
+      : input.attack === 'assault' || input.attack === 'assault-warning'
+        ? 6
+        : input.attack === 'charge' || input.attack === 'charge-warning'
+          ? 5
+          : 4
+    : 4
 
   return {
+    textureKey: 'qingshi-combat-actors',
+    frame,
     halo,
     telegraph,
     tint: isEnraged ? 0xffb4b4 : 0xffffff,
