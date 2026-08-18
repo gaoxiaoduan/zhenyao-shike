@@ -7,10 +7,11 @@ import type {
 } from './runSummary'
 
 export const RUN_HISTORY_STORAGE_KEY = 'zhenyao-shike.run-history.v3'
-export const BOSS_PRACTICE_STORAGE_KEY = 'zhenyao-shike.boss-practice.v1'
+export const BOSS_PRACTICE_STORAGE_KEY = 'zhenyao-shike.boss-practice.v2'
 export const MAX_RUN_HISTORY_ENTRIES = 12
 const RUN_HISTORY_SCHEMA_VERSION = 3
 const RUN_HISTORY_GAME_VERSION = '0.1.0'
+const BOSS_PRACTICE_SCHEMA_VERSION = 2
 
 export interface RunRecordStorage {
   getItem(key: string): string | null
@@ -67,6 +68,14 @@ interface StoredRunHistoryData {
   readonly firstVictoryRecorded: boolean
 }
 
+interface StoredBossPractice {
+  readonly schemaVersion: 2
+  readonly gameVersion: string
+  readonly writtenAtMs: number
+  readonly checksum: string
+  readonly data: { readonly unlocked: boolean }
+}
+
 interface StoredRunHistoryState {
   readonly history: RunHistorySnapshot
   readonly firstVictoryRecorded: boolean
@@ -84,11 +93,28 @@ export function createEmptyRunHistory(): RunHistorySnapshot {
 }
 
 export function hasBossPracticeUnlocked(storage: BossPracticeStorage): boolean {
-  return storage.getItem(BOSS_PRACTICE_STORAGE_KEY) === 'unlocked'
+  const raw = storage.getItem(BOSS_PRACTICE_STORAGE_KEY)
+  if (!raw) {
+    return false
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return isStoredBossPractice(parsed) && parsed.data.unlocked
+  } catch {
+    return false
+  }
 }
 
-export function unlockBossPractice(storage: BossPracticeStorage): void {
-  storage.setItem(BOSS_PRACTICE_STORAGE_KEY, 'unlocked')
+export function unlockBossPractice(storage: BossPracticeStorage, recordedAtMs = Date.now()): void {
+  const data = { unlocked: true }
+  const payload: StoredBossPractice = {
+    schemaVersion: BOSS_PRACTICE_SCHEMA_VERSION,
+    gameVersion: RUN_HISTORY_GAME_VERSION,
+    writtenAtMs: recordedAtMs,
+    checksum: calculateChecksum(JSON.stringify(data)),
+    data,
+  }
+  storage.setItem(BOSS_PRACTICE_STORAGE_KEY, JSON.stringify(payload))
 }
 
 export function readRunHistory(storage: Pick<RunRecordStorage, 'getItem'>): RunHistorySnapshot {
@@ -229,6 +255,14 @@ export function isValidRunHistoryStorageValue(raw: string): boolean {
   return parseStoredRunHistory(raw) !== null
 }
 
+export function isValidBossPracticeStorageValue(raw: string): boolean {
+  try {
+    return isStoredBossPractice(JSON.parse(raw))
+  } catch {
+    return false
+  }
+}
+
 function createStoredRunHistory(
   entries: readonly RunHistoryEntry[],
   best: RunHistoryBest,
@@ -256,6 +290,17 @@ function calculateChecksum(value: string): string {
     hash = Math.imul(hash, 16_777_619)
   }
   return (hash >>> 0).toString(16)
+}
+
+function isStoredBossPractice(value: unknown): value is StoredBossPractice {
+  return isRecord(value)
+    && value.schemaVersion === BOSS_PRACTICE_SCHEMA_VERSION
+    && value.gameVersion === RUN_HISTORY_GAME_VERSION
+    && isFiniteNumber(value.writtenAtMs)
+    && typeof value.checksum === 'string'
+    && isRecord(value.data)
+    && value.data.unlocked === true
+    && value.checksum === calculateChecksum(JSON.stringify(value.data))
 }
 
 function isRunHistoryBest(value: unknown): value is RunHistoryBest {

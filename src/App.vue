@@ -11,7 +11,7 @@ import { createBrowserAudioOutput } from './game/audio/browserAudioOutput'
 import type { RunSummary } from './game/domain/runSummary'
 import { createEmptyRunHistory, hasBossPracticeUnlocked, readRunHistory, recordRunResult, unlockBossPractice } from './game/domain/runRecord'
 import { GROWTH_PHASE_DURATION_MS } from './game/domain/runProgress'
-import { createBrowserRunHistoryStorage } from './game/platform/runHistoryStorage'
+import { createBrowserRunHistoryStorage, type StorageHydrationStatus } from './game/platform/runHistoryStorage'
 import type { ControlAction, GameSettings } from './game/settings/gameSettings'
 import { CONTROL_ACTION_LABELS } from './game/settings/controlPresentation'
 
@@ -36,6 +36,7 @@ const desktopMedia = window.matchMedia('(hover: hover) and (pointer: fine)')
 const runHistoryStorage = createBrowserRunHistoryStorage()
 const bossPracticeUnlocked = shallowRef(false)
 const runHistory = shallowRef(createEmptyRunHistory())
+const storageNotice = shallowRef<Exclude<StorageHydrationStatus, 'ready'> | null>(null)
 const { settings, update, rebind, reset } = useGameSettings()
 const audioDirector = createAudioDirector(createBrowserAudioOutput(), settings.value)
 
@@ -85,7 +86,10 @@ function toggleFullscreen() {
 }
 
 async function hydrateRunHistory() {
-  await runHistoryStorage.ready
+  const hydrationStatus = await runHistoryStorage.ready
+  if (hydrationStatus !== 'ready') {
+    storageNotice.value = hydrationStatus
+  }
   bossPracticeUnlocked.value = hasBossPracticeUnlocked(runHistoryStorage)
   runHistory.value = readRunHistory(runHistoryStorage)
 }
@@ -141,6 +145,10 @@ function openOverlay(nextOverlay: Exclude<Overlay, null>) {
 function closeOverlay() {
   audioDirector.handle({ type: 'effect', cue: 'ui-back' })
   overlay.value = null
+}
+
+function dismissStorageNotice() {
+  storageNotice.value = null
 }
 
 function updateSettings(patch: Partial<Omit<GameSettings, 'version' | 'keyBindings'>>) {
@@ -213,6 +221,16 @@ onUnmounted(() => {
       @home="returnHome"
       @open-history="openOverlay('history')"
     />
+
+    <aside
+      v-if="storageNotice"
+      class="fixed inset-x-4 bottom-4 z-[80] mx-auto flex max-w-xl items-center justify-between gap-4 rounded border border-amber-200/30 bg-[#14271d]/95 px-4 py-3 text-sm text-stone-100 shadow-2xl backdrop-blur"
+      role="status"
+      aria-live="polite"
+    >
+      <span>{{ storageNotice === 'recovered' ? '检测到存档异常，已从上一份有效历练记录恢复。' : '历练记录存储暂不可用，本局记录只保留在当前会话。' }}</span>
+      <button class="shrink-0 text-amber-200 underline underline-offset-4" type="button" @click="dismissStorageNotice">知道了</button>
+    </aside>
 
     <RunHistoryPanel
       v-if="overlay === 'history'"

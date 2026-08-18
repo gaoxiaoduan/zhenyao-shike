@@ -1,5 +1,6 @@
 import {
   BOSS_PRACTICE_STORAGE_KEY,
+  isValidBossPracticeStorageValue,
   isValidRunHistoryStorageValue,
   RUN_HISTORY_STORAGE_KEY,
   type RunRecordStorage,
@@ -10,9 +11,11 @@ export const RUN_HISTORY_DATABASE_VERSION = 1
 export const RUN_HISTORY_STORE_NAME = 'records'
 
 export interface BrowserRunHistoryStorage extends RunRecordStorage {
-  readonly ready: Promise<void>
+  readonly ready: Promise<StorageHydrationStatus>
   flush(): Promise<boolean>
 }
+
+export type StorageHydrationStatus = 'ready' | 'recovered' | 'degraded'
 
 const BACKUP_KEY_SUFFIX = ':backup'
 
@@ -47,17 +50,22 @@ export function createBrowserRunHistoryStorage(): BrowserRunHistoryStorage {
     },
   }
 
-  async function hydrate(): Promise<void> {
+  async function hydrate(): Promise<StorageHydrationStatus> {
     if (typeof indexedDB === 'undefined') {
-      return
+      return 'degraded'
     }
 
     try {
       database = await openDatabase()
+      let recovered = false
+      let degraded = false
       for (const key of [RUN_HISTORY_STORAGE_KEY, BOSS_PRACTICE_STORAGE_KEY]) {
         const pair = await readRecordPair(database, key)
         const currentIsValid = isValidStoredRecord(key, pair.current)
         const backupIsValid = isValidStoredRecord(key, pair.backup)
+        degraded = degraded
+          || (pair.current !== null && !currentIsValid)
+          || (pair.backup !== null && !backupIsValid)
         const value = currentIsValid
           ? pair.current
           : backupIsValid
@@ -68,10 +76,13 @@ export function createBrowserRunHistoryStorage(): BrowserRunHistoryStorage {
         }
         if (!currentIsValid && backupIsValid && pair.backup !== null) {
           await restoreRecord(database, key, pair.backup)
+          recovered = true
         }
       }
+      return recovered ? 'recovered' : degraded ? 'degraded' : 'ready'
     } catch {
       database = null
+      return 'degraded'
     }
   }
 }
@@ -94,7 +105,9 @@ function isValidStoredRecord(key: string, value: string | null): boolean {
   if (value === null) {
     return false
   }
-  return key === RUN_HISTORY_STORAGE_KEY ? isValidRunHistoryStorageValue(value) : value === 'unlocked'
+  return key === RUN_HISTORY_STORAGE_KEY
+    ? isValidRunHistoryStorageValue(value)
+    : isValidBossPracticeStorageValue(value)
 }
 
 function readRecordPair(database: IDBDatabase, key: string): Promise<StoredRecordPair> {

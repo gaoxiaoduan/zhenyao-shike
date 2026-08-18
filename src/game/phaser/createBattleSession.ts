@@ -116,7 +116,12 @@ import {
   performDeduction,
   type ZhouTianOptionId,
 } from '../domain/deductionAndZhouTian'
-import type { BattleInstrumentationSnapshot, CreateGameSessionOptions, BattleRuntimeOutput } from '../session/GameSession'
+import type {
+  BattleInstrumentationSnapshot,
+  BattlefieldEventKind,
+  CreateGameSessionOptions,
+  BattleRuntimeOutput,
+} from '../session/GameSession'
 import { createGameSessionController, type BattleRuntime } from '../session/GameSessionController'
 
 const WORLD_SIZE = 2048
@@ -125,6 +130,35 @@ const HUD_INTERVAL_MS = 120
 const SPELL_COOLDOWN_MS = 10_000
 const SPELL_SHIELD_DURATION_MS = 1_500
 const RESULT_FREEZE_MS = 600
+
+const BATTLEFIELD_EVENT_COPY: Record<BattlefieldEventKind, {
+  readonly name: string
+  readonly reward: string
+  readonly objectives: {
+    readonly report: string
+    readonly travel: string
+    readonly active: string
+  }
+}> = {
+  'demon-lair': {
+    name: '妖巢暴动',
+    objectives: {
+      report: '45 秒内前往妖巢；抵达后有独立 60 秒战斗期，摧毁妖巢并击败守巢精英。',
+      travel: '45 秒内前往妖巢',
+      active: '60 秒内摧毁妖巢并击败守巢精英',
+    },
+    reward: '40 灵蕴 · +1 推演 · 结算 8 灵石',
+  },
+  lingquan: {
+    name: '灵泉涌现',
+    objectives: {
+      report: '45 秒内前往青蓝区域并维持两秒引导，恢复生命并扩大灵蕴拾取范围。',
+      travel: '45 秒内前往青蓝区域',
+      active: '完成两秒引导，恢复生命并扩大拾取范围',
+    },
+    reward: '恢复 35% 最大生命 · 拾取范围 ×2（30 秒）',
+  },
+}
 
 const ABANDONED_VILLAGE = { x: 1160, y: 1040, width: 290, height: 190 } as const
 
@@ -1102,15 +1136,16 @@ export class QingShiRidgeScene extends Phaser.Scene {
   private advanceBattlefieldEvents(stepMs: number) {
     if (this.demonLair.phase === 'travel' && !this.seenBattlefieldEvents.has('demon-lair')) {
       this.seenBattlefieldEvents.add('demon-lair')
+      const copy = BATTLEFIELD_EVENT_COPY['demon-lair']
       this.reportRuntimeOutput({
         type: 'battlefield-event-requested',
         event: {
           kind: 'demon-lair',
           phase: 'travel',
-          name: '妖巢暴动',
-          objective: '45 秒内前往妖巢；抵达后有独立 60 秒战斗期，摧毁妖巢并击败守巢精英。',
+          name: copy.name,
+          objective: copy.objectives.report,
           remainingMs: this.demonLair.travelRemainingMs,
-          reward: '40 灵蕴 · +1 推演 · 结算 8 灵石',
+          reward: copy.reward,
         },
         firstEncounter: !this.deterministicAcceptance,
       })
@@ -1119,15 +1154,16 @@ export class QingShiRidgeScene extends Phaser.Scene {
 
     if (this.lingquanEvent.phase === 'available' && !this.seenBattlefieldEvents.has('lingquan')) {
       this.seenBattlefieldEvents.add('lingquan')
+      const copy = BATTLEFIELD_EVENT_COPY.lingquan
       this.reportRuntimeOutput({
         type: 'battlefield-event-requested',
         event: {
           kind: 'lingquan',
           phase: 'available',
-          name: '灵泉涌现',
-          objective: '45 秒内前往青蓝区域并维持两秒引导，恢复生命并扩大灵蕴拾取范围。',
+          name: copy.name,
+          objective: copy.objectives.report,
           remainingMs: this.lingquanEvent.travelRemainingMs,
-          reward: '恢复 35% 最大生命 · 拾取范围 ×2（30 秒）',
+          reward: copy.reward,
         },
         firstEncounter: !this.deterministicAcceptance,
       })
@@ -2063,15 +2099,15 @@ export class QingShiRidgeScene extends Phaser.Scene {
       ? {
           kind: 'demon-lair' as const,
           phase: this.demonLair.phase,
-          name: '妖巢暴动',
+          name: BATTLEFIELD_EVENT_COPY['demon-lair'].name,
           objective: this.demonLair.phase === 'travel'
-            ? '45 秒内前往妖巢'
-            : '60 秒内摧毁妖巢并击败守巢精英',
+            ? BATTLEFIELD_EVENT_COPY['demon-lair'].objectives.travel
+            : BATTLEFIELD_EVENT_COPY['demon-lair'].objectives.active,
           remainingMs: this.demonLair.phase === 'travel'
             ? this.demonLair.travelRemainingMs
             : this.demonLair.battleRemainingMs,
           progress: this.demonLair.destroyed ? 1 : 1 - this.demonLair.health / this.demonLair.maxHealth,
-          reward: '40 灵蕴 · +1 推演 · 8 灵石',
+          reward: BATTLEFIELD_EVENT_COPY['demon-lair'].reward,
         }
       : this.lingquanEvent.phase !== 'dormant'
         && this.lingquanEvent.phase !== 'expired'
@@ -2079,11 +2115,13 @@ export class QingShiRidgeScene extends Phaser.Scene {
         ? {
             kind: 'lingquan' as const,
             phase: this.lingquanEvent.phase,
-            name: '灵泉涌现',
-            objective: '45 秒内前往并完成两秒引导',
+            name: BATTLEFIELD_EVENT_COPY.lingquan.name,
+            objective: this.lingquanEvent.phase === 'available'
+              ? BATTLEFIELD_EVENT_COPY.lingquan.objectives.travel
+              : BATTLEFIELD_EVENT_COPY.lingquan.objectives.active,
             remainingMs: this.lingquanEvent.travelRemainingMs,
             progress: this.lingquanEvent.guideProgressMs / this.lingquanEvent.guideDurationMs,
-            reward: '恢复 35% · 拾取范围 ×2',
+            reward: BATTLEFIELD_EVENT_COPY.lingquan.reward,
           }
         : undefined
 

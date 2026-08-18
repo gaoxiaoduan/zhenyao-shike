@@ -77,6 +77,23 @@ function createHistorySave() {
   })
 }
 
+function createBossPracticeSave() {
+  const data = { unlocked: true }
+  const serialized = JSON.stringify(data)
+  let checksum = 2_166_136_261
+  for (let index = 0; index < serialized.length; index += 1) {
+    checksum ^= serialized.charCodeAt(index)
+    checksum = Math.imul(checksum, 16_777_619)
+  }
+  return JSON.stringify({
+    schemaVersion: 2,
+    gameVersion: '0.1.0',
+    writtenAtMs: 1_700_000_000_000,
+    checksum: (checksum >>> 0).toString(16),
+    data,
+  })
+}
+
 test('opens the polished cave hub and persists audio settings', async ({ page }) => {
   await page.goto('/')
 
@@ -122,7 +139,7 @@ test('keeps a small desktop window playable in 小窗历练', async ({ page }) =
 })
 
 test('unlocked 妖王演练 enters the boss directly without the mainline onboarding', async ({ page }) => {
-  await seedBrowserSave(page, 'zhenyao-shike.boss-practice.v1', 'unlocked')
+  await seedBrowserSave(page, 'zhenyao-shike.boss-practice.v2', createBossPracticeSave())
   await page.setViewportSize({ width: 1280, height: 720 })
 
   await page.getByRole('button', { name: '进入妖王演练' }).click()
