@@ -2,7 +2,8 @@ export type CombatPresentationCheckpointId =
   | 'opening-00-30'
   | 'surge-02-00'
   | 'event-04-00'
-  | 'boss-08-30'
+  | 'density-08-30'
+  | 'boss-10-00'
 
 export interface CombatPresentationCheckpoint {
   readonly id: CombatPresentationCheckpointId
@@ -21,7 +22,8 @@ export const QING_SHI_RIDGE_PRESENTATION_CHECKPOINTS: readonly CombatPresentatio
   { id: 'opening-00-30', elapsedMs: 30_000, label: '开局妖潮与第一轮法器动作' },
   { id: 'surge-02-00', elapsedMs: 120_000, label: '妖潮增压与精英妖物' },
   { id: 'event-04-00', elapsedMs: 240_000, label: '青石岭事件与高阶法器' },
-  { id: 'boss-08-30', elapsedMs: 510_000, label: '啸月狼王与狂月阶段' },
+  { id: 'density-08-30', elapsedMs: 510_000, label: '高密度妖潮与法器视觉干扰' },
+  { id: 'boss-10-00', elapsedMs: 600_000, label: '啸月狼王降临与阶段战斗' },
 ] as const
 
 export function resolveCombatPresentationCheckpoint(elapsedMs: number): CombatPresentationCheckpoint | null {

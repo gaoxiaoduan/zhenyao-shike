@@ -236,6 +236,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
   private radarLabel!: Phaser.GameObjects.Text
   private spiritNodeLabels: Phaser.GameObjects.Text[] = []
   private playerSprite!: Phaser.GameObjects.Image
+  private spellPresentationSprite!: Phaser.GameObjects.Image
   private inputIntent = createInputIntent()
   private progress: RunProgress = createRunProgress()
   private player = { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2, health: 100, maxHealth: 100 }
@@ -384,6 +385,11 @@ export class QingShiRidgeScene extends Phaser.Scene {
       .image(this.player.x, this.player.y, 'qingshi-actors', 0)
       .setDisplaySize(84, 84)
       .setDepth(4)
+    this.spellPresentationSprite = this.add
+      .image(this.player.x, this.player.y, 'artifact-combat-effects', 28)
+      .setDisplaySize(112, 112)
+      .setDepth(5)
+      .setVisible(false)
     this.spiritNodeLabels = this.terrainLayout.spiritNodes.map((node) => this.add.text(node.x, node.y + 36, '灵脉石坛', {
       color: '#d6d3d1',
       fontFamily: '"Noto Sans SC", sans-serif',
@@ -2172,7 +2178,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
         7,
       )
       if (fountainActive) {
-        const pulse = this.reducedMotion ? 0.55 : 0.4 + Math.sin(Date.now() / 220) * 0.2
+        const pulse = this.reducedMotion ? 0.55 : 0.4 + Math.sin(this.presentationElapsedMs / 220) * 0.2
         this.graphics.fillStyle(0x22d3ee, 0.1 + pulse * 0.12).fillCircle(node.x, node.y, node.radius + 24)
         this.graphics.lineStyle(3, 0x67e8f9, 0.8).strokeCircle(node.x, node.y, node.radius + 24)
         this.graphics.lineStyle(3, 0xa7f3d0, 0.95).arc(
@@ -2188,7 +2194,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
     // Render the hostile 妖巢 as an entity with a sharp silhouette, not a
     // generic red interaction circle.
     if (this.demonLair.phase === 'travel' || this.demonLair.phase === 'battle' || this.demonLair.phase === 'destroyed') {
-      const pulse = this.reducedMotion ? 0.7 : 0.55 + Math.sin(Date.now() / 200) * 0.22
+      const pulse = this.reducedMotion ? 0.7 : 0.55 + Math.sin(this.presentationElapsedMs / 200) * 0.22
       if (!this.demonLair.destroyed) {
         this.graphics.fillStyle(0x4c0519, 0.82).fillTriangle(
           this.demonLair.x - 34,
@@ -2349,6 +2355,22 @@ export class QingShiRidgeScene extends Phaser.Scene {
           symbolY + 5,
         )
       }
+    }
+    const spellVisualActive = this.shieldRemainingMs > 0
+      || this.spellCastVisualRemainingMs > 0
+      || this.spellImpactPulseRemainingMs > 0
+      || this.spellEndVisualRemainingMs > 0
+    if (spellVisualActive) {
+      const spellFrame = 28 + (this.reducedMotion ? 0 : Math.floor(this.presentationElapsedMs / 120) % 4)
+      this.spellPresentationSprite
+        .setTexture('artifact-combat-effects', spellFrame)
+        .setPosition(this.player.x, this.player.y)
+        .setDisplaySize(this.shieldRemainingMs > 0 ? 112 : 94, this.shieldRemainingMs > 0 ? 112 : 94)
+        .setAngle(this.reducedMotion ? 0 : this.presentationElapsedMs / 80)
+        .setAlpha(this.shieldRemainingMs > 0 ? 0.72 : 0.9)
+        .setVisible(true)
+    } else {
+      this.spellPresentationSprite.setVisible(false)
     }
     if (this.spellCastVisualRemainingMs > 0 || this.spellImpactPulseRemainingMs > 0 || this.spellEndVisualRemainingMs > 0) {
       const signature = resolveCombatVisualSignature('xuan-guang-hu-shen-jue')

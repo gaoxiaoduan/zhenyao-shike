@@ -145,12 +145,32 @@ describe('semantic combat presentation', () => {
 
     expect(enraged.halo).toBe('cracked-moon')
     expect(enraged.textureKey).toBe('qingshi-combat-actors')
-    expect(enraged.frame).toBe(10)
+    expect(enraged.frame).toBe(11)
     expect(enraged.shadowSplit).toBe(true)
     expect(enraged.telegraph).toBe('assault-lane')
     expect(breach.halo).toBe('breach-open')
     expect(breach.moonMarkOpen).toBe(true)
     expect(breach.shake).toBe(0)
+
+    const bossIdleStart = resolveBossPresentation({
+      phase: 'combat',
+      attack: 'none',
+      introRemainingMs: 0,
+      howlRemainingMs: 0,
+      breachRemainingMs: 0,
+      elapsedMs: 0,
+      reducedMotion: false,
+    })
+    const bossIdleLater = resolveBossPresentation({
+      phase: 'combat',
+      attack: 'none',
+      introRemainingMs: 0,
+      howlRemainingMs: 0,
+      breachRemainingMs: 0,
+      elapsedMs: 240,
+      reducedMotion: false,
+    })
+    expect(bossIdleLater.frame).not.toBe(bossIdleStart.frame)
   })
 
   it('maps every implemented artifact to a source motif and a distinct macro shape', () => {
@@ -191,10 +211,12 @@ describe('semantic combat presentation', () => {
       ['opening-00-30', 30_000],
       ['surge-02-00', 120_000],
       ['event-04-00', 240_000],
-      ['boss-08-30', 510_000],
+      ['density-08-30', 510_000],
+      ['boss-10-00', 600_000],
     ])
     expect(resolveCombatPresentationCheckpoint(29_999)).toBeNull()
     expect(resolveCombatPresentationCheckpoint(30_000)?.id).toBe('opening-00-30')
-    expect(resolveCombatPresentationCheckpoint(510_000)?.id).toBe('boss-08-30')
+    expect(resolveCombatPresentationCheckpoint(510_000)?.id).toBe('density-08-30')
+    expect(resolveCombatPresentationCheckpoint(600_000)?.id).toBe('boss-10-00')
   })
 })

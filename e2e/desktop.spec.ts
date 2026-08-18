@@ -54,6 +54,7 @@ test('unlocked 妖王演练 enters the boss directly without the mainline onboar
 })
 
 test('selects cards with number keys and exposes the full-world battle radar', async ({ page }) => {
+  test.setTimeout(60_000)
   await page.setViewportSize({ width: 1280, height: 720 })
   await page.goto('/?e2e-time=30')
   await page.getByRole('button', { name: '开始青石岭历练' }).click()
@@ -93,7 +94,8 @@ test('selects cards with number keys and exposes the full-world battle radar', a
   await page.keyboard.down('w')
   await waitForPresentationCheckpoint(page, battlefield, 'surge-02-00')
   await waitForPresentationCheckpoint(page, battlefield, 'event-04-00')
-  await waitForPresentationCheckpoint(page, battlefield, 'boss-08-30')
+  await waitForPresentationCheckpoint(page, battlefield, 'density-08-30')
+  await waitForPresentationCheckpoint(page, battlefield, 'boss-10-00')
   await page.keyboard.up('w')
 })
 

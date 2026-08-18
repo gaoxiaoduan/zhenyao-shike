@@ -345,21 +345,22 @@ export function resolveBossPresentation(input: BossPresentationInput): BossPrese
   const shake = input.reducedMotion || isArrival || impactRemainingMs <= 0
     ? 0
     : Math.sin(input.elapsedMs / 28) * (isEnraged ? 1.5 : 0.8) * Math.min(1, impactRemainingMs / 120)
+  const animationStep = input.reducedMotion ? 0 : Math.floor(Math.max(0, input.elapsedMs) / 120)
   const frame = isEnraged
     ? input.breachRemainingMs > 0
       ? 11
       : input.attack === 'assault' || input.attack === 'assault-warning'
-        ? 10
+        ? 10 + animationStep % 2
         : input.attack === 'charge' || input.attack === 'charge-warning'
-          ? 9
-          : 8
+          ? 8 + animationStep % 2
+          : 8 + animationStep % 4
+    : isArrival
+      ? 4
     : input.attack === 'assault' || input.attack === 'assault-warning'
-      ? 7
+      ? 7 + animationStep % 2
       : input.attack === 'charge' || input.attack === 'charge-warning'
-        ? 6
-        : input.phase === 'arrival'
-          ? 4
-          : 5
+        ? 6 + animationStep % 2
+        : 5 + animationStep % 3
 
   return {
     textureKey: 'qingshi-combat-actors',
