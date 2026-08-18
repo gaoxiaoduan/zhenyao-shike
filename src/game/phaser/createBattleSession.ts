@@ -1,6 +1,7 @@
 import * as Phaser from 'phaser'
 import actorAtlasUrl from '../../assets/game/qingshi-actors.png'
 import combatActorAtlasUrl from '../../assets/game/qingshi-combat-actors.png'
+import commonActorAtlasUrl from '../../assets/game/qingshi-common-actors.png'
 import artifactIconsAtlasUrl from '../../assets/game/artifact-icons.png'
 import groundTextureUrl from '../../assets/game/qingshi-ground.png'
 import { musicStageForRun, type MusicStage, type SoundCue } from '../audio/audioDirector'
@@ -272,6 +273,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
   private awaitingInitialArtifact = true
   private onboardingSkipped = false
   private paused = false
+  private randomState = 1
   private boss?: WolfKingEncounter
   private bossSpatial?: BossSpatialState
   private bossHowlRemainingMs = 0
@@ -350,6 +352,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
     this.deterministicAcceptance = deterministicAcceptance
     this.practiceMode = practiceMode
     const sessionSeed = deterministicAcceptance ? DETERMINISTIC_ACCEPTANCE_SEED : runSeed
+    this.randomState = (Math.floor(sessionSeed) >>> 0) || 1
     this.terrainLayout = generateQingShiRidgeLayout(sessionSeed)
     this.upgradeDraftState = createUpgradeDraftState(sessionSeed)
     this.lingquanEvent = createLingquanEventState(this.terrainLayout.spiritNodes.length, sessionSeed)
@@ -358,6 +361,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
   preload() {
     this.load.image('qingshi-ground', groundTextureUrl)
     this.load.spritesheet('qingshi-actors', actorAtlasUrl, { frameWidth: 512, frameHeight: 512 })
+    this.load.spritesheet('qingshi-common-actors', commonActorAtlasUrl, { frameWidth: 256, frameHeight: 256 })
     this.load.spritesheet('qingshi-combat-actors', combatActorAtlasUrl, { frameWidth: 256, frameHeight: 768 })
     this.load.image('artifact-icons', artifactIconsAtlasUrl)
   }
@@ -741,12 +745,21 @@ export class QingShiRidgeScene extends Phaser.Scene {
     this.reducedMotion = reducedMotion
   }
 
+  private nextRandom() {
+    this.randomState = (1664525 * this.randomState + 1013904223) >>> 0
+    return this.randomState / 0x1_0000_0000
+  }
+
+  private randomBetween(min: number, max: number) {
+    return min + (max - min) * this.nextRandom()
+  }
+
   private startBossEncounter() {
     this.recallEnemiesForBossTransition()
     this.projectiles = []
     this.enemyProjectiles = []
     this.thunderEffects = []
-    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2)
+    const angle = this.randomBetween(0, Math.PI * 2)
     const distance = 180
     this.boss = createWolfKingEncounter()
     this.bossSpatial = {
@@ -964,8 +977,8 @@ export class QingShiRidgeScene extends Phaser.Scene {
       return
     }
 
-    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2)
-    const distance = Phaser.Math.Between(90, 150)
+    const angle = this.randomBetween(0, Math.PI * 2)
+    const distance = this.randomBetween(90, 150)
     const enraged = this.boss?.phase === 'enraged'
     const stats = createWolfKingMinionStats(enraged)
     this.enemies.push({
@@ -979,7 +992,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
       behavior: createEnemyBehaviorState(),
       chargeDirectionX: 0,
       chargeDirectionY: 0,
-      flankDirection: Phaser.Math.RND.frac() < 0.5 ? -1 : 1,
+      flankDirection: this.nextRandom() < 0.5 ? -1 : 1,
       vulnerableMultiplier: 1,
       hitFlashMs: 0,
       isLairGuard: false,
@@ -1157,7 +1170,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
     const waveStage = getDemonWaveStage(this.progress.elapsedMs)
     const enemyId: QingShiRidgeEnemyId = spawnElite
       ? 'qing-shi-ridge-elite-wolf'
-      : commonEnemyId ?? chooseCommonEnemyForWave(waveStage.index, Phaser.Math.RND.frac())
+      : commonEnemyId ?? chooseCommonEnemyForWave(waveStage.index, this.nextRandom())
     if (spawnElite) {
       this.lastEliteSpawnMs = this.progress.elapsedMs
       if (this.deterministicAcceptance) {
@@ -1179,7 +1192,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
       behavior: createEnemyBehaviorState(),
       chargeDirectionX: 0,
       chargeDirectionY: 0,
-      flankDirection: Phaser.Math.RND.frac() < 0.5 ? -1 : 1,
+      flankDirection: this.nextRandom() < 0.5 ? -1 : 1,
       vulnerableMultiplier: 1,
       hitFlashMs: 0,
       isLairGuard: false,
@@ -1240,8 +1253,8 @@ export class QingShiRidgeScene extends Phaser.Scene {
       this.demonLair = result.nextState
       if (result.justDestroyed) {
         for (let i = 0; i < 40; i++) {
-          const angle = Phaser.Math.FloatBetween(0, Math.PI * 2)
-          const dist = Phaser.Math.Between(10, 90)
+          const angle = this.randomBetween(0, Math.PI * 2)
+          const dist = this.randomBetween(10, 90)
           this.spirits.push({
             x: Phaser.Math.Clamp(this.demonLair.x + Math.cos(angle) * dist, 40, WORLD_SIZE - 40),
             y: Phaser.Math.Clamp(this.demonLair.y + Math.sin(angle) * dist, 40, WORLD_SIZE - 40),
@@ -1971,16 +1984,16 @@ export class QingShiRidgeScene extends Phaser.Scene {
   }
 
   private createEnemySprite(id: string, x: number, y: number, radius: number) {
-    const textureKey = id === 'xiaoyue-wolf-king-moon-shadow' ? 'qingshi-combat-actors' : 'qingshi-actors'
+    const textureKey = id === 'xiaoyue-wolf-king-moon-shadow' ? 'qingshi-combat-actors' : 'qingshi-common-actors'
     const frame = textureKey === 'qingshi-combat-actors'
       ? 0
       : id === 'qing-shi-ridge-boar-demon'
-        ? 1
+        ? 0
         : id === 'qing-shi-ridge-mist-moth'
-          ? 3
+          ? 8
           : id === 'qing-shi-ridge-elite-wolf'
-            ? 4
-            : 2
+            ? 12
+            : 4
     const sprite = this.enemySpritePool.pop() ?? this.add.image(x, y, textureKey, frame)
     return sprite
       .setActive(true)

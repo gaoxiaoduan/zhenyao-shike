@@ -29,6 +29,8 @@ describe('semantic combat presentation', () => {
     expect(presentation.pose).toBe('windup')
     expect(presentation.telegraph).toBe('charge-lane')
     expect(presentation.silhouette).toBe('boar-demon')
+    expect(presentation.textureKey).toBe('qingshi-common-actors')
+    expect(presentation.frame).toBe(1)
     expect(presentation.scale).toBeLessThan(1)
   })
 
@@ -51,6 +53,8 @@ describe('semantic combat presentation', () => {
     expect(presentation.isVulnerable).toBe(true)
     expect(presentation.accentColor).toBe(0xfbbf24)
     expect(presentation.flipX).toBe(true)
+    expect(presentation.textureKey).toBe('qingshi-common-actors')
+    expect(presentation.frame).toBe(15)
   })
 
   it('keeps moon shadows visually separate from ordinary wood wolves', () => {
@@ -97,7 +101,7 @@ describe('semantic combat presentation', () => {
 
     expect(enraged.halo).toBe('cracked-moon')
     expect(enraged.textureKey).toBe('qingshi-combat-actors')
-    expect(enraged.frame).toBe(6)
+    expect(enraged.frame).toBe(10)
     expect(enraged.shadowSplit).toBe(true)
     expect(enraged.telegraph).toBe('assault-lane')
     expect(breach.halo).toBe('breach-open')

@@ -29,7 +29,7 @@ export interface EnemyPresentationInput {
 }
 
 export interface EnemyPresentation {
-  readonly textureKey: 'qingshi-actors' | 'qingshi-combat-actors'
+  readonly textureKey: 'qingshi-common-actors' | 'qingshi-combat-actors'
   readonly frame: number
   readonly silhouette: EnemyVisualSilhouette
   readonly pose: EnemyVisualPose
@@ -45,16 +45,30 @@ export interface EnemyPresentation {
 }
 
 const ENEMY_SILHOUETTES: Readonly<Record<EnemyVisualSilhouette, {
-  readonly frame: number
   readonly accentColor: number
   readonly baseScale: number
   readonly tint: number | null
 }>> = {
-  'boar-demon': { frame: 1, accentColor: 0xf59e0b, baseScale: 1.04, tint: null },
-  'wood-wolf': { frame: 2, accentColor: 0x86efac, baseScale: 1, tint: null },
-  'mist-moth': { frame: 3, accentColor: 0xc4b5fd, baseScale: 0.96, tint: null },
-  'elite-wolf': { frame: 4, accentColor: 0xfbbf24, baseScale: 1.14, tint: null },
-  'moon-shadow': { frame: 2, accentColor: 0xc4b5fd, baseScale: 0.92, tint: 0x2e1065 },
+  'boar-demon': { accentColor: 0xf59e0b, baseScale: 1.04, tint: null },
+  'wood-wolf': { accentColor: 0x86efac, baseScale: 1, tint: null },
+  'mist-moth': { accentColor: 0xc4b5fd, baseScale: 0.96, tint: null },
+  'elite-wolf': { accentColor: 0xfbbf24, baseScale: 1.14, tint: null },
+  'moon-shadow': { accentColor: 0xc4b5fd, baseScale: 0.92, tint: 0x2e1065 },
+}
+
+const COMMON_ACTOR_FRAME_START: Readonly<Record<Exclude<EnemyVisualSilhouette, 'moon-shadow'>, number>> = {
+  'boar-demon': 0,
+  'wood-wolf': 4,
+  'mist-moth': 8,
+  'elite-wolf': 12,
+}
+
+const COMMON_ACTOR_POSE_FRAME: Readonly<Record<EnemyVisualPose, number>> = {
+  approach: 0,
+  windup: 1,
+  attack: 2,
+  recover: 3,
+  hit: 3,
 }
 
 function enemySilhouette(input: EnemyPresentationInput): EnemyVisualSilhouette {
@@ -114,7 +128,7 @@ export function resolveEnemyPresentation(input: EnemyPresentationInput): EnemyPr
           : role === 'pursuer-flanker'
             ? 'flank'
             : 'none'
-  const dynamicMotion = input.reducedMotion ? 0 : Math.sin(input.elapsedMs / 90 + palette.frame) 
+  const dynamicMotion = input.reducedMotion ? 0 : Math.sin(input.elapsedMs / 90 + COMMON_ACTOR_POSE_FRAME[pose])
   const poseScale = input.reducedMotion
     ? 1
     : pose === 'windup'
@@ -143,10 +157,10 @@ export function resolveEnemyPresentation(input: EnemyPresentationInput): EnemyPr
         : pose === 'recover'
           ? 3
           : 0
-    : palette.frame
+    : COMMON_ACTOR_FRAME_START[silhouette] + COMMON_ACTOR_POSE_FRAME[pose]
 
   return {
-    textureKey: silhouette === 'moon-shadow' ? 'qingshi-combat-actors' : 'qingshi-actors',
+    textureKey: silhouette === 'moon-shadow' ? 'qingshi-combat-actors' : 'qingshi-common-actors',
     frame,
     silhouette,
     pose,
@@ -316,13 +330,19 @@ export function resolveBossPresentation(input: BossPresentationInput): BossPrese
     : Math.sin(input.elapsedMs / 28) * (isEnraged ? 1.5 : 0.8) * Math.min(1, impactRemainingMs / 120)
   const frame = isEnraged
     ? input.breachRemainingMs > 0
-      ? 7
+      ? 11
       : input.attack === 'assault' || input.attack === 'assault-warning'
-        ? 6
+        ? 10
         : input.attack === 'charge' || input.attack === 'charge-warning'
-          ? 5
-          : 4
-    : 4
+          ? 9
+          : 8
+    : input.attack === 'assault' || input.attack === 'assault-warning'
+      ? 7
+      : input.attack === 'charge' || input.attack === 'charge-warning'
+        ? 6
+        : input.phase === 'arrival'
+          ? 4
+          : 5
 
   return {
     textureKey: 'qingshi-combat-actors',
