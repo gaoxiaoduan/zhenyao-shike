@@ -6,11 +6,11 @@ import type {
   RunSummary,
 } from './runSummary'
 
-export const RUN_HISTORY_STORAGE_KEY = 'zhenyao-shike.run-history.v1'
+export const RUN_HISTORY_STORAGE_KEY = 'zhenyao-shike.run-history.v2'
 export const BOSS_PRACTICE_STORAGE_KEY = 'zhenyao-shike.boss-practice.v1'
 export const MAX_RUN_HISTORY_ENTRIES = 12
 
-interface RunRecordStorage {
+export interface RunRecordStorage {
   getItem(key: string): string | null
   setItem(key: string, value: string): void
 }
@@ -52,8 +52,15 @@ export interface RunRecordUpdate {
 }
 
 interface StoredRunHistory {
-  readonly version: 1
+  readonly version: 2
   readonly entries: readonly unknown[]
+  readonly best: RunHistoryBest
+  readonly firstVictoryRecorded: boolean
+}
+
+interface StoredRunHistoryState {
+  readonly history: RunHistorySnapshot
+  readonly firstVictoryRecorded: boolean
 }
 
 export function createEmptyRunHistory(): RunHistorySnapshot {
@@ -76,24 +83,31 @@ export function unlockBossPractice(storage: BossPracticeStorage): void {
 }
 
 export function readRunHistory(storage: Pick<RunRecordStorage, 'getItem'>): RunHistorySnapshot {
+  return readStoredRunHistory(storage).history
+}
+
+function readStoredRunHistory(storage: Pick<RunRecordStorage, 'getItem'>): StoredRunHistoryState {
   const raw = storage.getItem(RUN_HISTORY_STORAGE_KEY)
   if (!raw) {
-    return createEmptyRunHistory()
+    return { history: createEmptyRunHistory(), firstVictoryRecorded: false }
   }
 
   try {
     const parsed: unknown = JSON.parse(raw)
     if (!isStoredRunHistory(parsed)) {
-      return createEmptyRunHistory()
+      return { history: createEmptyRunHistory(), firstVictoryRecorded: false }
     }
 
     const entries = parsed.entries.filter(isRunHistoryEntry)
     if (entries.length !== parsed.entries.length) {
-      return createEmptyRunHistory()
+      return { history: createEmptyRunHistory(), firstVictoryRecorded: false }
     }
-    return createHistorySnapshot(entries)
+    return {
+      history: createHistorySnapshot(entries, parsed.best),
+      firstVictoryRecorded: parsed.firstVictoryRecorded,
+    }
   } catch {
-    return createEmptyRunHistory()
+    return { history: createEmptyRunHistory(), firstVictoryRecorded: false }
   }
 }
 
@@ -102,15 +116,21 @@ export function recordRunResult(
   summary: RunSummary,
   recordedAtMs = Date.now(),
 ): RunRecordUpdate {
-  const current = readRunHistory(storage)
-  const entry = createRunHistoryEntry(summary, recordedAtMs, current.entries)
-  const entries = [entry, ...current.entries].slice(0, MAX_RUN_HISTORY_ENTRIES)
-  const history = createHistorySnapshot(entries)
-  storage.setItem(RUN_HISTORY_STORAGE_KEY, JSON.stringify({ version: 1, entries }))
+  const current = readStoredRunHistory(storage)
+  const entry = createRunHistoryEntry(summary, recordedAtMs, current.history.entries)
+  const entries = [entry, ...current.history.entries].slice(0, MAX_RUN_HISTORY_ENTRIES)
+  const history = createHistorySnapshot(entries, mergeBest(current.history.best, entry))
+  const firstVictoryRecorded = current.firstVictoryRecorded || summary.result === 'victory'
+  storage.setItem(RUN_HISTORY_STORAGE_KEY, JSON.stringify({
+    version: 2,
+    entries,
+    best: history.best,
+    firstVictoryRecorded,
+  }))
 
   return {
-    isNewRecord: isNewPersonalRecord(summary, current),
-    demonCoreEarned: summary.result === 'victory' && !current.entries.some((item) => item.result === 'victory'),
+    isNewRecord: isNewPersonalRecord(summary, current.history),
+    demonCoreEarned: summary.result === 'victory' && !current.firstVictoryRecorded,
     entry,
     history,
   }
@@ -143,19 +163,24 @@ function createRunHistoryEntry(
   }
 }
 
-function createHistorySnapshot(entries: readonly RunHistoryEntry[]): RunHistorySnapshot {
-  const victories = entries.filter((entry) => entry.result === 'victory')
+function createHistorySnapshot(entries: readonly RunHistoryEntry[], best: RunHistoryBest): RunHistorySnapshot {
   return {
     entries: entries.map((entry) => ({
       ...entry,
       completedEvents: [...entry.completedEvents],
       artifacts: entry.artifacts.map((artifact) => ({ ...artifact })),
     })),
-    best: {
-      fastestVictoryMs: victories.length ? Math.min(...victories.map((entry) => entry.elapsedMs)) : null,
-      mostKills: entries.length ? Math.max(...entries.map((entry) => entry.defeatedEnemies)) : 0,
-      longestSurvivalMs: entries.length ? Math.max(...entries.map((entry) => entry.elapsedMs)) : 0,
-    },
+    best: { ...best },
+  }
+}
+
+function mergeBest(best: RunHistoryBest, entry: RunHistoryEntry): RunHistoryBest {
+  return {
+    fastestVictoryMs: entry.result === 'victory'
+      ? best.fastestVictoryMs === null ? entry.elapsedMs : Math.min(best.fastestVictoryMs, entry.elapsedMs)
+      : best.fastestVictoryMs,
+    mostKills: Math.max(best.mostKills, entry.defeatedEnemies),
+    longestSurvivalMs: Math.max(best.longestSurvivalMs, entry.elapsedMs),
   }
 }
 
@@ -168,7 +193,18 @@ function isNewPersonalRecord(summary: RunSummary, current: RunHistorySnapshot): 
 }
 
 function isStoredRunHistory(value: unknown): value is StoredRunHistory {
-  return isRecord(value) && value.version === 1 && Array.isArray(value.entries)
+  return isRecord(value)
+    && value.version === 2
+    && Array.isArray(value.entries)
+    && isRunHistoryBest(value.best)
+    && typeof value.firstVictoryRecorded === 'boolean'
+}
+
+function isRunHistoryBest(value: unknown): value is RunHistoryBest {
+  return isRecord(value)
+    && (value.fastestVictoryMs === null || isFiniteNumber(value.fastestVictoryMs))
+    && isFiniteNumber(value.mostKills)
+    && isFiniteNumber(value.longestSurvivalMs)
 }
 
 function isRunHistoryEntry(value: unknown): value is RunHistoryEntry {

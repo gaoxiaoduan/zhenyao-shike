@@ -302,7 +302,7 @@ const eventProgress = computed(() => Math.max(0, Math.min(1, props.snapshot?.bat
 
 .battle-hud--compact .battle-hud__vitals-heading { margin-bottom: 0.28rem; font-size: 0.62rem; }
 .battle-hud--compact .battle-hud__boss {
-  top: max(0.6rem, env(safe-area-inset-top));
+  top: max(4.5rem, calc(env(safe-area-inset-top) + 4.1rem));
   right: max(0.6rem, env(safe-area-inset-right));
   left: auto;
   width: min(16rem, calc(100% - 18rem));

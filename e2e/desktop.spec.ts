@@ -16,6 +16,31 @@ async function waitForPresentationCheckpoint(
   ).toBe(checkpoint)
 }
 
+async function seedBrowserSave(page: Page, key: string, value: string) {
+  await page.goto('/')
+  await page.evaluate(async ({ key: recordKey, value: recordValue }) => {
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open('zhenyao-shike.saves.v1', 1)
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains('records')) {
+          request.result.createObjectStore('records')
+        }
+      }
+      request.onerror = () => reject(request.error)
+      request.onsuccess = () => {
+        const transaction = request.result.transaction('records', 'readwrite')
+        transaction.objectStore('records').put(recordValue, recordKey)
+        transaction.oncomplete = () => {
+          request.result.close()
+          resolve()
+        }
+        transaction.onerror = () => reject(transaction.error)
+      }
+    })
+  }, { key, value })
+  await page.reload()
+}
+
 test('opens the polished cave hub and persists audio settings', async ({ page }) => {
   await page.goto('/')
 
@@ -30,24 +55,27 @@ test('opens the polished cave hub and persists audio settings', async ({ page })
 })
 
 test('opens saved personal 历练记录 from the cave hub', async ({ page }) => {
-  await page.addInitScript(() => {
-    window.localStorage.setItem('zhenyao-shike.run-history.v1', JSON.stringify({
-      version: 1,
-      entries: [{
-        id: 'run-e2e',
-        recordedAtMs: 1_700_000_000_000,
-        result: 'victory',
-        elapsedMs: 180_000,
-        defeatedEnemies: 55,
-        defeatedElites: 2,
-        bossElapsedMs: 42_000,
-        completedEvents: ['demon-lair', 'lingquan'],
-        artifacts: [{ id: 'qing-feng-jian-xia', name: '青锋剑匣', level: 5 }],
-        finalDamageSource: 'unknown',
-      }],
-    }))
-  })
-  await page.goto('/')
+  await seedBrowserSave(page, 'zhenyao-shike.run-history.v2', JSON.stringify({
+    version: 2,
+    best: {
+      fastestVictoryMs: 180_000,
+      mostKills: 55,
+      longestSurvivalMs: 180_000,
+    },
+    firstVictoryRecorded: true,
+    entries: [{
+      id: 'run-e2e',
+      recordedAtMs: 1_700_000_000_000,
+      result: 'victory',
+      elapsedMs: 180_000,
+      defeatedEnemies: 55,
+      defeatedElites: 2,
+      bossElapsedMs: 42_000,
+      completedEvents: ['demon-lair', 'lingquan'],
+      artifacts: [{ id: 'qing-feng-jian-xia', name: '青锋剑匣', level: 5 }],
+      finalDamageSource: 'unknown',
+    }],
+  }))
   await page.getByRole('button', { name: '打开历练记录' }).click()
 
   await expect(page.getByRole('dialog', { name: '历练记录' })).toContainText('最快胜场')
@@ -78,11 +106,8 @@ test('keeps a small desktop window playable in 小窗历练', async ({ page }) =
 })
 
 test('unlocked 妖王演练 enters the boss directly without the mainline onboarding', async ({ page }) => {
-  await page.addInitScript(() => {
-    window.localStorage.setItem('zhenyao-shike.boss-practice.v1', 'unlocked')
-  })
+  await seedBrowserSave(page, 'zhenyao-shike.boss-practice.v1', 'unlocked')
   await page.setViewportSize({ width: 1280, height: 720 })
-  await page.goto('/')
 
   await page.getByRole('button', { name: '进入妖王演练' }).click()
   await expect(page.getByRole('dialog', { name: '选择初始法器' })).toBeVisible()

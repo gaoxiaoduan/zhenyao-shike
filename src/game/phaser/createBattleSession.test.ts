@@ -27,6 +27,7 @@ function createScene() {
     setInputIntent: vi.fn(),
     castSpell: vi.fn(),
     resizeViewport: vi.fn(),
+    setCompactRadar: vi.fn(),
     setReducedMotion: vi.fn(),
     setPaused: vi.fn(),
   }
@@ -44,6 +45,7 @@ describe('Phaser battle runtime adapter', () => {
       aspectRatio: 16 / 9,
       internalWidth: 1280,
       internalHeight: 720,
+      compact: true,
       requiresOrientation: false,
       requiresLargerWindow: false,
       hasInformationWings: false,
@@ -74,6 +76,7 @@ describe('Phaser battle runtime adapter', () => {
     expect(scene.castSpell).toHaveBeenCalledOnce()
     expect(game.scale.setGameSize).toHaveBeenCalledWith(2560, 1440)
     expect(scene.resizeViewport).toHaveBeenCalledWith(1280, 720)
+    expect(scene.setCompactRadar).toHaveBeenCalledWith(true)
     expect(scene.setReducedMotion).toHaveBeenCalledWith(true)
     expect(scene.setPaused).toHaveBeenCalledWith(true)
     expect(game.destroy).toHaveBeenCalledWith(true)

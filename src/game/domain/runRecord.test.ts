@@ -5,6 +5,7 @@ import {
   hasBossPracticeUnlocked,
   readRunHistory,
   recordRunResult,
+  RUN_HISTORY_STORAGE_KEY,
   unlockBossPractice,
 } from './runRecord'
 
@@ -67,23 +68,31 @@ describe('run record', () => {
     expect(readRunHistory(storage)).toEqual(second.history)
   })
 
-  it('only grants the first victory reward and keeps the twelve newest runs', () => {
+  it('keeps the first victory reward and personal bests beyond the twelve newest runs', () => {
     const storage = createStorage()
 
-    for (let index = 0; index < 13; index += 1) {
-      const update = recordRunResult(storage, createSummary({ elapsedMs: 100_000 + index * 1_000 }), 1_700_000_000_000 + index)
-      if (index === 0) {
-        expect(update.demonCoreEarned).toBe(false)
-      }
+    const firstVictory = recordRunResult(storage, createSummary({
+      result: 'victory',
+      elapsedMs: 100_000,
+      defeatedEnemies: 100,
+    }), 1_700_000_000_000)
+    expect(firstVictory.demonCoreEarned).toBe(true)
+
+    for (let index = 0; index < 12; index += 1) {
+      recordRunResult(storage, createSummary({ elapsedMs: 120_000 + index * 1_000, defeatedEnemies: 10 }), 1_700_000_000_001 + index)
     }
 
-    const victory = recordRunResult(storage, createSummary({ result: 'victory' }), 1_700_000_000_100)
-    const repeatVictory = recordRunResult(storage, createSummary({ result: 'victory' }), 1_700_000_000_101)
+    const laterVictory = recordRunResult(storage, createSummary({ result: 'victory', elapsedMs: 180_000, defeatedEnemies: 10 }), 1_700_000_000_100)
 
-    expect(victory.demonCoreEarned).toBe(true)
-    expect(repeatVictory.demonCoreEarned).toBe(false)
-    expect(repeatVictory.history.entries).toHaveLength(12)
-    expect(repeatVictory.history.entries.at(-1)?.recordedAtMs).toBe(1_700_000_000_003)
+    expect(laterVictory.demonCoreEarned).toBe(false)
+    expect(laterVictory.isNewRecord).toBe(false)
+    expect(laterVictory.history.entries).toHaveLength(12)
+    expect(laterVictory.history.entries.at(-1)?.recordedAtMs).toBe(1_700_000_000_002)
+    expect(laterVictory.history.best).toEqual({
+      fastestVictoryMs: 100_000,
+      mostKills: 100,
+      longestSurvivalMs: 180_000,
+    })
   })
 
   it('does not call a slower victory a new record when the kill count is unchanged', () => {
@@ -99,7 +108,7 @@ describe('run record', () => {
     const storage = createStorage()
 
     expect(readRunHistory(storage)).toEqual(createEmptyRunHistory())
-    storage.setItem('zhenyao-shike.run-history.v1', '{"version":1,"entries":[null]}')
+    storage.setItem(RUN_HISTORY_STORAGE_KEY, '{"version":2,"entries":[null]}')
     expect(readRunHistory(storage)).toEqual(createEmptyRunHistory())
   })
 

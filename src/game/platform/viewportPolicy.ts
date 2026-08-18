@@ -17,6 +17,7 @@ export interface BattleViewport {
   readonly aspectRatio: number
   readonly internalWidth: number
   readonly internalHeight: number
+  readonly compact?: boolean
   readonly requiresOrientation: boolean
   readonly requiresLargerWindow: boolean
   readonly hasInformationWings: boolean
@@ -39,6 +40,7 @@ export function computeBattleViewport(input: BattleViewportInput): BattleViewpor
     aspectRatio,
     internalWidth: Math.round(BATTLE_DESIGN_HEIGHT * aspectRatio),
     internalHeight: BATTLE_DESIGN_HEIGHT,
+    compact: Boolean(input.compact),
     requiresOrientation: !input.desktop && input.height > input.width,
     requiresLargerWindow:
       input.desktop

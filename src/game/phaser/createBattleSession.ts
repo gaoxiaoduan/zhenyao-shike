@@ -225,7 +225,7 @@ const DETERMINISTIC_ACCEPTANCE_SEED = 20260818
 export class QingShiRidgeScene extends Phaser.Scene {
   private readonly reportRuntimeOutput: (event: BattleRuntimeOutput) => void
   private readonly renderScale: number
-  private readonly compactRadar: boolean
+  private compactRadar: boolean
   private readonly elapsedTimeScale: number
   private readonly emitInstrumentation?: (snapshot: BattleInstrumentationSnapshot) => void
   private readonly deterministicAcceptance: boolean
@@ -748,6 +748,10 @@ export class QingShiRidgeScene extends Phaser.Scene {
     this.updateCamera()
   }
 
+  setCompactRadar(compact: boolean) {
+    this.compactRadar = compact
+  }
+
   setReducedMotion(reducedMotion: boolean) {
     this.reducedMotion = reducedMotion
   }
@@ -1033,7 +1037,6 @@ export class QingShiRidgeScene extends Phaser.Scene {
         ...(this.demonLair.phase === 'completed' ? ['demon-lair' as const] : []),
         ...(this.lingquanEvent.phase === 'completed' ? ['lingquan' as const] : []),
       ] satisfies readonly RunEventId[],
-      demonLairDestroyed: this.demonLair.phase === 'completed',
       artifacts: this.inventory.slots.map((slot) => ({
         id: slot.id,
         name: ARTIFACT_DEFINITIONS[slot.id].name,
@@ -2906,6 +2909,7 @@ interface BattleRuntimeSceneAdapter {
   setInputIntent(intent: InputIntent): void
   castSpell(): void
   resizeViewport(width: number, height: number): void
+  setCompactRadar?(compact: boolean): void
   setReducedMotion(reducedMotion: boolean): void
   setPaused(paused: boolean): void
 }
@@ -2938,6 +2942,7 @@ export function createBattleRuntimeAdapter(
         viewport.internalHeight * renderScale,
       )
       scene.resizeViewport(viewport.internalWidth, viewport.internalHeight)
+      scene.setCompactRadar?.(viewport.compact ?? false)
     },
     setReducedMotion: (reducedMotion) => scene.setReducedMotion(reducedMotion),
     setPaused: (paused) => scene.setPaused(paused),

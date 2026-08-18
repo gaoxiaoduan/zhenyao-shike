@@ -9,8 +9,9 @@ import { useGameSettings } from './composables/useGameSettings'
 import { createAudioDirector, type AudioIntent } from './game/audio/audioDirector'
 import { createBrowserAudioOutput } from './game/audio/browserAudioOutput'
 import type { RunSummary } from './game/domain/runSummary'
-import { hasBossPracticeUnlocked, readRunHistory, recordRunResult, unlockBossPractice } from './game/domain/runRecord'
+import { createEmptyRunHistory, hasBossPracticeUnlocked, readRunHistory, recordRunResult, unlockBossPractice } from './game/domain/runRecord'
 import { GROWTH_PHASE_DURATION_MS } from './game/domain/runProgress'
+import { createBrowserRunHistoryStorage } from './game/platform/runHistoryStorage'
 import type { ControlAction, GameSettings } from './game/settings/gameSettings'
 import { CONTROL_ACTION_LABELS } from './game/settings/controlPresentation'
 
@@ -28,13 +29,16 @@ const showOnboarding = shallowRef(true)
 const practiceMode = shallowRef(false)
 const compactMode = shallowRef(false)
 const runWasCompact = shallowRef(false)
-const bossPracticeUnlocked = shallowRef(hasBossPracticeUnlocked(window.localStorage))
-const runHistory = shallowRef(readRunHistory(window.localStorage))
 const rebindError = shallowRef<string | null>(null)
 const fullscreenAvailable = shallowRef(Boolean(document.fullscreenEnabled))
 const desktopMedia = window.matchMedia('(hover: hover) and (pointer: fine)')
+const runHistoryStorage = createBrowserRunHistoryStorage()
+const bossPracticeUnlocked = shallowRef(false)
+const runHistory = shallowRef(createEmptyRunHistory())
 const { settings, update, rebind, reset } = useGameSettings()
 const audioDirector = createAudioDirector(createBrowserAudioOutput(), settings.value)
+
+void hydrateRunHistory()
 
 watch(settings, (nextSettings) => audioDirector.updateSettings(nextSettings))
 watch(
@@ -79,19 +83,27 @@ function toggleFullscreen() {
   void document.documentElement.requestFullscreen().catch(() => undefined)
 }
 
-function finishRun(summary: RunSummary) {
+async function hydrateRunHistory() {
+  await runHistoryStorage.ready
+  bossPracticeUnlocked.value = hasBossPracticeUnlocked(runHistoryStorage)
+  runHistory.value = readRunHistory(runHistoryStorage)
+}
+
+async function finishRun(summary: RunSummary) {
   const wasPractice = practiceMode.value
-  if (!wasPractice && summary.elapsedMs >= GROWTH_PHASE_DURATION_MS) {
-    unlockBossPractice(window.localStorage)
-    bossPracticeUnlocked.value = true
-  }
   let nextIsNewRecord = false
   let demonCoreEarned = false
   if (!wasPractice) {
-    const record = recordRunResult(window.localStorage, summary)
+    await runHistoryStorage.ready
+    if (summary.elapsedMs >= GROWTH_PHASE_DURATION_MS) {
+      unlockBossPractice(runHistoryStorage)
+      bossPracticeUnlocked.value = true
+    }
+    const record = recordRunResult(runHistoryStorage, summary)
     nextIsNewRecord = record.isNewRecord
     demonCoreEarned = record.demonCoreEarned
     runHistory.value = record.history
+    await runHistoryStorage.flush()
   }
   lastResult.value = { ...summary, demonCores: demonCoreEarned ? 1 : 0 }
   isNewRecord.value = nextIsNewRecord

@@ -10,7 +10,6 @@ describe('createRunSummary', () => {
       defeatedElites: 1,
       bossElapsedMs: null,
       completedEvents: ['demon-lair'],
-      demonLairDestroyed: true,
       artifacts: [{ id: 'qing-feng-jian-xia', name: '青锋剑匣', level: 4 }],
       finalDamageSource: 'ordinary-enemy',
     })).toEqual({
@@ -37,7 +36,6 @@ describe('createRunSummary', () => {
       defeatedElites: 0,
       bossElapsedMs: 20_000,
       completedEvents: [],
-      demonLairDestroyed: false,
       artifacts: [],
       finalDamageSource: 'moon-howl',
       practiceMode: true,

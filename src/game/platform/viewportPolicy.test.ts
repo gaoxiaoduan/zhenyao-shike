@@ -7,6 +7,7 @@ describe('computeBattleViewport', () => {
       aspectRatio: 16 / 9,
       internalWidth: 1280,
       internalHeight: 720,
+      compact: false,
       requiresOrientation: false,
       requiresLargerWindow: false,
       hasInformationWings: false,
