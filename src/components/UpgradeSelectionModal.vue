@@ -54,7 +54,7 @@ const { handleChoiceHotkey } = useChoiceDialogHotkeys((slot, event) => {
     tabindex="-1"
     @keydown="handleChoiceHotkey"
   >
-    <div class="max-h-[calc(100svh-2.5rem)] w-full max-w-4xl overflow-y-auto rounded-lg border border-amber-100/35 bg-[#18231e] p-5 shadow-2xl sm:p-8">
+    <div class="upgrade-selection__card max-h-[calc(100svh-2.5rem)] w-full max-w-4xl overflow-y-auto rounded-lg border border-amber-100/35 bg-[#18231e] p-5 shadow-2xl sm:p-8">
       <p class="text-center text-sm tracking-[0.35em] text-amber-200/80">
         {{ isZhouTian ? '法器满阶 · 周天运转' : '灵蕴满溢 · 领悟升级' }}
       </p>
@@ -69,11 +69,11 @@ const { handleChoiceHotkey } = useChoiceDialogHotkeys((slot, event) => {
         }}
       </p>
 
-      <div v-if="choices.length > 0" class="mt-7 grid gap-4 sm:grid-cols-3">
+      <div v-if="choices.length > 0" class="upgrade-selection__choices mt-7 grid gap-4 sm:grid-cols-3">
         <button
           v-for="choice in choices"
           :key="choice.choiceId"
-          class="group relative flex flex-col justify-between rounded-lg border border-amber-100/25 bg-stone-950/45 p-5 text-left transition hover:-translate-y-1 hover:border-amber-200 hover:bg-amber-950/20 hover:shadow-[0_0_24px_rgba(245,158,11,0.15)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-200"
+          class="upgrade-selection__choice group relative flex flex-col justify-between rounded-lg border border-amber-100/25 bg-stone-950/45 p-5 text-left transition hover:-translate-y-1 hover:border-amber-200 hover:bg-amber-950/20 hover:shadow-[0_0_24px_rgba(245,158,11,0.15)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-200"
           type="button"
           @click="emit('select', choice.choiceId)"
         >
@@ -126,7 +126,7 @@ const { handleChoiceHotkey } = useChoiceDialogHotkeys((slot, event) => {
       </div>
 
       <!-- Action controls bar: Deduction (推演) & Meditation (吐纳) -->
-      <div class="mt-6 flex flex-wrap items-center justify-center gap-4 border-t border-amber-100/15 pt-5">
+      <div class="upgrade-selection__action-bar mt-6 flex flex-wrap items-center justify-center gap-4 border-t border-amber-100/15 pt-5">
         <button
           class="flex items-center gap-2 rounded-md border border-cyan-300/40 bg-cyan-950/40 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-900/60 disabled:cursor-not-allowed disabled:opacity-40"
           type="button"
@@ -151,7 +151,7 @@ const { handleChoiceHotkey } = useChoiceDialogHotkeys((slot, event) => {
 
       <section
         v-if="ascensions.length > 0"
-        class="mt-7 rounded-lg border border-fuchsia-200/25 bg-fuchsia-950/15 p-4 sm:p-5"
+        class="upgrade-selection__ascension mt-7 rounded-lg border border-fuchsia-200/25 bg-fuchsia-950/15 p-4 sm:p-5"
         aria-label="可用升阶"
       >
         <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -171,7 +171,7 @@ const { handleChoiceHotkey } = useChoiceDialogHotkeys((slot, event) => {
           <button
             v-for="(ascension, index) in ascensions"
             :key="ascension.choiceId"
-            class="rounded-md border border-fuchsia-200/30 bg-stone-950/35 p-4 text-left transition hover:-translate-y-0.5 hover:border-fuchsia-200/75 hover:bg-fuchsia-950/30 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-fuchsia-200"
+            class="upgrade-selection__ascension-choice rounded-md border border-fuchsia-200/30 bg-stone-950/35 p-4 text-left transition hover:-translate-y-0.5 hover:border-fuchsia-200/75 hover:bg-fuchsia-950/30 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-fuchsia-200"
             type="button"
             @click="emit('selectAscension', ascension.choiceId)"
           >
@@ -202,3 +202,62 @@ const { handleChoiceHotkey } = useChoiceDialogHotkeys((slot, event) => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.upgrade-selection {
+  background:
+    radial-gradient(circle at 50% 35%, rgb(72 45 101 / 0.18), transparent 42%),
+    rgb(3 8 6 / 0.88);
+}
+
+.upgrade-selection__card {
+  position: relative;
+  border-color: rgb(245 216 138 / 0.38);
+  background:
+    linear-gradient(135deg, rgb(28 46 35 / 0.98), rgb(8 18 13 / 0.98)),
+    #18231e;
+  box-shadow: 0 2rem 7rem rgb(0 0 0 / 0.75), inset 0 1px rgb(255 255 255 / 0.08);
+}
+
+.upgrade-selection__card::before {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-top: 1px solid rgb(245 216 138 / 0.48);
+  border-right: 1px solid rgb(245 216 138 / 0.48);
+  content: "";
+  pointer-events: none;
+}
+
+.upgrade-selection__choice {
+  border-color: rgb(245 216 138 / 0.24);
+  background: linear-gradient(145deg, rgb(3 12 8 / 0.62), rgb(19 34 25 / 0.68));
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.04);
+}
+
+.upgrade-selection__choice:hover,
+.upgrade-selection__choice:focus-visible {
+  background: linear-gradient(145deg, rgb(62 47 24 / 0.62), rgb(18 51 32 / 0.72));
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.1), 0 0 1.5rem rgb(245 216 138 / 0.08);
+}
+
+.upgrade-selection__choice :deep(.artifact-icon),
+.upgrade-selection__ascension-choice :deep(.artifact-icon) {
+  border-color: rgb(245 216 138 / 0.42);
+}
+
+.upgrade-selection__action-bar {
+  border-top-color: rgb(245 216 138 / 0.16);
+}
+
+.upgrade-selection__ascension {
+  background: linear-gradient(135deg, rgb(57 21 77 / 0.24), rgb(25 13 39 / 0.18));
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.04);
+}
+
+.upgrade-selection__ascension-choice {
+  background: linear-gradient(145deg, rgb(26 13 36 / 0.56), rgb(8 15 12 / 0.5));
+}
+</style>

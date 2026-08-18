@@ -60,7 +60,10 @@ const eventProgress = computed(() => Math.max(0, Math.min(1, props.snapshot?.bat
     </section>
 
     <aside class="battle-hud__wing battle-hud__wing--left">
-      <p class="battle-hud__eyebrow">本局构筑</p>
+      <div class="battle-hud__eyebrow-row">
+        <p class="battle-hud__eyebrow">本局构筑</p>
+        <span>{{ snapshot?.artifacts.length ?? 0 }} / 4</span>
+      </div>
       <div v-if="snapshot?.artifacts.length" class="battle-hud__artifacts">
         <div v-for="artifact in snapshot.artifacts" :key="artifact.id" class="battle-hud__artifact">
           <ArtifactIcon :id="artifact.id" :label="artifact.name" />
@@ -74,7 +77,10 @@ const eventProgress = computed(() => Math.max(0, Math.min(1, props.snapshot?.bat
     </aside>
 
     <aside class="battle-hud__wing battle-hud__wing--right">
-      <p class="battle-hud__eyebrow">青石岭历练</p>
+      <div class="battle-hud__eyebrow-row">
+        <p class="battle-hud__eyebrow">青石岭历练</p>
+        <span>第 {{ snapshot?.level ?? 1 }} 境</span>
+      </div>
       <strong class="battle-hud__stage">{{ snapshot?.stageLabel ?? '整备中' }}</strong>
       <dl class="battle-hud__stats">
         <div><dt>时间</dt><dd>{{ formatElapsedTime(snapshot?.elapsedMs ?? 0) }}</dd></div>
@@ -100,7 +106,7 @@ const eventProgress = computed(() => Math.max(0, Math.min(1, props.snapshot?.bat
         </div>
         <span>
           <strong>玄光护身诀</strong>
-          <small>{{ snapshot?.spellShieldRemainingMs ? `护盾 ${Math.ceil(snapshot.spellShieldRemainingMs / 100) / 10}s` : snapshot?.spellCooldownMs ? `${Math.ceil(snapshot.spellCooldownMs / 1000)} 秒` : '可施放' }}</small>
+          <small :class="{ 'battle-hud__spell-status--ready': !snapshot?.spellShieldRemainingMs && !snapshot?.spellCooldownMs }">{{ snapshot?.spellShieldRemainingMs ? `护盾 ${Math.ceil(snapshot.spellShieldRemainingMs / 100) / 10}s` : snapshot?.spellCooldownMs ? `${Math.ceil(snapshot.spellCooldownMs / 1000)} 秒` : '可施放' }}</small>
         </span>
         <kbd>{{ spellKey }}</kbd>
       </div>
@@ -117,24 +123,44 @@ const eventProgress = computed(() => Math.max(0, Math.min(1, props.snapshot?.bat
 </template>
 
 <style scoped>
+.battle-hud {
+  --hud-panel: rgb(6 14 10 / 0.84);
+  --hud-panel-bright: rgb(19 34 25 / 0.78);
+  --hud-gold: #f5d88a;
+  --hud-jade: #a7f3d0;
+  --hud-line: rgb(225 190 102 / 0.28);
+}
+
+.battle-hud::before {
+  position: absolute;
+  inset: max(0.55rem, env(safe-area-inset-top)) max(0.55rem, env(safe-area-inset-right)) max(0.55rem, env(safe-area-inset-bottom)) max(0.55rem, env(safe-area-inset-left));
+  z-index: 50;
+  border: 1px solid rgb(245 216 138 / 0.08);
+  border-radius: 0.45rem;
+  content: "";
+  pointer-events: none;
+}
+
 .battle-hud__vitals {
   position: absolute;
   top: max(0.8rem, env(safe-area-inset-top));
   left: 50%;
   width: min(24rem, calc(100% - 18rem));
   min-width: 15rem;
-  border: 1px solid rgb(225 190 102 / 0.22);
-  background: rgb(6 14 10 / 0.82);
+  border: 1px solid var(--hud-line);
+  border-top-color: rgb(245 216 138 / 0.52);
+  border-radius: 0.35rem;
+  background: linear-gradient(135deg, var(--hud-panel-bright), var(--hud-panel));
   padding: 0.55rem 0.7rem;
   color: #f5f5f4;
-  box-shadow: 0 0.7rem 2rem rgb(0 0 0 / 0.35);
+  box-shadow: var(--ui-shadow), inset 0 1px rgb(255 255 255 / 0.06);
   transform: translateX(-50%);
   backdrop-filter: blur(10px);
 }
 
 .battle-hud__vitals-heading { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 0.4rem; font-size: 0.68rem; }
 .battle-hud__vitals-heading span { color: #fdba74; font-family: ui-monospace, monospace; }
-.battle-hud__bar { height: 0.36rem; overflow: hidden; background: rgb(0 0 0 / 0.55); }
+.battle-hud__bar { position: relative; height: 0.36rem; overflow: hidden; border: 1px solid rgb(255 255 255 / 0.05); background: rgb(0 0 0 / 0.55); }
 .battle-hud__bar + .battle-hud__bar { margin-top: 0.22rem; }
 .battle-hud__bar i { display: block; height: 100%; transition: width 120ms linear; }
 .battle-hud__bar--health i { background: linear-gradient(90deg, #dc6c51, #fb923c); }
@@ -146,10 +172,12 @@ const eventProgress = computed(() => Math.max(0, Math.min(1, props.snapshot?.bat
   left: 50%;
   width: min(31rem, calc(100% - 22rem));
   min-width: 18rem;
-  border: 1px solid rgb(216 180 254 / 0.35);
-  background: rgb(19 10 28 / 0.86);
+  border: 1px solid rgb(216 180 254 / 0.42);
+  border-radius: 0.35rem;
+  background: linear-gradient(135deg, rgb(31 16 43 / 0.9), rgb(19 10 28 / 0.86));
   padding: 0.55rem 0.7rem;
   color: #fef3c7;
+  box-shadow: 0 1rem 3rem rgb(0 0 0 / 0.38), inset 0 1px rgb(255 255 255 / 0.05);
   transform: translateX(-50%);
 }
 
@@ -164,14 +192,29 @@ const eventProgress = computed(() => Math.max(0, Math.min(1, props.snapshot?.bat
   position: absolute;
   top: 50%;
   width: clamp(11rem, 12vw, 14rem);
-  border: 1px solid rgb(225 190 102 / 0.2);
-  background: linear-gradient(145deg, rgb(7 14 11 / 0.86), rgb(20 32 25 / 0.72));
+  overflow: hidden;
+  border: 1px solid rgb(225 190 102 / 0.24);
+  border-radius: 0.35rem;
+  background: linear-gradient(145deg, rgb(20 36 27 / 0.84), rgb(7 14 11 / 0.88));
   padding: 1rem;
   color: #eee9db;
-  box-shadow: 0 1rem 3rem rgb(0 0 0 / 0.35);
+  box-shadow: var(--ui-shadow), inset 0 1px rgb(255 255 255 / 0.05);
   transform: translateY(-50%);
   backdrop-filter: blur(12px);
 }
+
+.battle-hud__wing::before {
+  position: absolute;
+  top: 0;
+  width: 3rem;
+  height: 1px;
+  background: linear-gradient(90deg, var(--hud-gold), transparent);
+  content: "";
+  opacity: 0.7;
+}
+
+.battle-hud__wing--left::before { left: 0; }
+.battle-hud__wing--right::before { right: 0; transform: rotate(180deg); }
 
 .battle-hud__wing--left {
   left: max(0.75rem, env(safe-area-inset-left));
@@ -184,11 +227,25 @@ const eventProgress = computed(() => Math.max(0, Math.min(1, props.snapshot?.bat
 }
 
 .battle-hud__eyebrow {
-  margin: 0 0 0.85rem;
+  margin: 0;
   color: rgb(253 230 138 / 0.65);
   font-size: 0.65rem;
   font-weight: 800;
   letter-spacing: 0.24em;
+}
+
+.battle-hud__eyebrow-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+
+.battle-hud__eyebrow-row > span {
+  color: rgb(167 243 208 / 0.58);
+  font-family: ui-monospace, monospace;
+  font-size: 0.58rem;
 }
 
 .battle-hud__artifacts {
@@ -214,12 +271,14 @@ const eventProgress = computed(() => Math.max(0, Math.min(1, props.snapshot?.bat
   left: 50%;
   bottom: max(1rem, env(safe-area-inset-bottom));
   width: min(29rem, calc(100% - 2rem));
-  border: 1px solid rgb(239 68 68 / 0.35);
-  background: rgb(28 12 16 / 0.9);
+  border: 1px solid rgb(239 68 68 / 0.4);
+  border-radius: 0.35rem;
+  background: linear-gradient(135deg, rgb(54 18 24 / 0.92), rgb(28 12 16 / 0.9));
   padding: 0.65rem 0.8rem;
   color: #fee2e2;
   transform: translateX(-50%);
   backdrop-filter: blur(8px);
+  box-shadow: 0 1rem 3rem rgb(0 0 0 / 0.32), inset 0 1px rgb(255 255 255 / 0.04);
 }
 .battle-hud__event--fountain { border-color: rgb(103 232 249 / 0.35); background: rgb(7 30 34 / 0.9); color: #cffafe; }
 .battle-hud__event-heading { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.7rem; }
@@ -250,6 +309,11 @@ const eventProgress = computed(() => Math.max(0, Math.min(1, props.snapshot?.bat
   font-size: 0.65rem;
 }
 
+.battle-hud__spell-status--ready {
+  color: var(--hud-jade);
+  text-shadow: 0 0 0.8rem rgb(110 231 183 / 0.35);
+}
+
 .battle-hud__stage {
   display: block;
   color: #fef3c7;
@@ -265,8 +329,9 @@ const eventProgress = computed(() => Math.max(0, Math.min(1, props.snapshot?.bat
 }
 
 .battle-hud__stats div {
-  border: 1px solid rgb(255 255 255 / 0.08);
-  background: rgb(255 255 255 / 0.035);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-top-color: rgb(245 216 138 / 0.18);
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.055), rgb(255 255 255 / 0.018));
   padding: 0.45rem 0.25rem;
   text-align: center;
 }

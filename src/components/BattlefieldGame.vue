@@ -517,10 +517,33 @@ onUnmounted(() => {
   position: absolute;
   left: 50%;
   top: 50%;
+  isolation: isolate;
   width: min(100vw, calc(100svh * var(--battle-aspect)));
   height: min(100svh, calc(100vw / var(--battle-aspect)));
   transform: translate(-50%, -50%);
   box-shadow: 0 0 5rem rgb(4 16 11 / 0.8);
+}
+
+.battlefield__stage::before {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  border: 1px solid rgb(245 216 138 / 0.14);
+  background:
+    radial-gradient(circle at 50% 46%, transparent 0 35%, rgb(3 9 6 / 0.06) 64%, rgb(3 9 6 / 0.42) 100%),
+    linear-gradient(180deg, rgb(1 8 5 / 0.08), transparent 22%, transparent 72%, rgb(1 8 5 / 0.24));
+  box-shadow: inset 0 0 4rem rgb(1 7 4 / 0.25);
+  content: "";
+  pointer-events: none;
+}
+
+.battlefield__stage::after {
+  position: absolute;
+  inset: 0.6rem;
+  z-index: 6;
+  border: 1px solid rgb(167 243 208 / 0.06);
+  content: "";
+  pointer-events: none;
 }
 
 .battlefield__canvas :deep(canvas) {
@@ -536,13 +559,15 @@ onUnmounted(() => {
 
 .battlefield__tool-button {
   min-height: 2.5rem;
-  border: 1px solid rgb(231 229 228 / 0.28);
+  border: 1px solid rgb(231 229 228 / 0.32);
   border-radius: 0.25rem;
-  background: rgb(12 18 15 / 0.76);
+  background: linear-gradient(135deg, rgb(23 40 29 / 0.86), rgb(12 18 15 / 0.78));
   padding: 0.55rem 0.8rem;
   color: rgb(245 245 244);
   font-size: 0.72rem;
   letter-spacing: 0.18em;
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.06), 0 0.5rem 1.25rem rgb(0 0 0 / 0.24);
+  transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
   backdrop-filter: blur(10px);
 }
 
@@ -551,5 +576,9 @@ onUnmounted(() => {
   border-color: rgb(253 230 138 / 0.7);
   color: rgb(254 243 199);
   outline: none;
+}
+
+.battlefield__tool-button:active {
+  transform: translateY(1px);
 }
 </style>

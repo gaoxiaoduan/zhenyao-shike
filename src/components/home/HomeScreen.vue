@@ -24,6 +24,11 @@ const emit = defineEmits<{
   >
     <div class="home-screen__shade absolute inset-0" />
     <div class="home-screen__grain absolute inset-0" />
+    <div class="home-screen__insignia" aria-hidden="true">
+      <span>十</span>
+      <i />
+      <small>青石岭</small>
+    </div>
 
     <header class="home-screen__topbar relative z-10">
       <div>
@@ -81,8 +86,10 @@ const emit = defineEmits<{
 
 <style scoped>
 .home-screen {
+  position: relative;
   display: grid;
   grid-template-rows: auto 1fr auto;
+  isolation: isolate;
   background-color: #07100d;
   background-position: center;
   background-size: cover;
@@ -91,7 +98,8 @@ const emit = defineEmits<{
 
 .home-screen__shade {
   background:
-    linear-gradient(90deg, rgb(3 8 7 / 0.92) 0%, rgb(3 8 7 / 0.54) 42%, rgb(3 8 7 / 0.18) 68%, rgb(3 8 7 / 0.46) 100%),
+    radial-gradient(circle at 62% 44%, transparent 0, rgb(3 8 7 / 0.08) 42%, rgb(3 8 7 / 0.38) 100%),
+    linear-gradient(90deg, rgb(3 8 7 / 0.88) 0%, rgb(3 8 7 / 0.5) 42%, rgb(3 8 7 / 0.18) 68%, rgb(3 8 7 / 0.46) 100%),
     linear-gradient(0deg, rgb(3 8 7 / 0.82), transparent 45%);
 }
 
@@ -100,6 +108,41 @@ const emit = defineEmits<{
   background-image: repeating-linear-gradient(0deg, transparent 0 3px, rgb(253 230 138 / 0.08) 4px);
   mix-blend-mode: soft-light;
   pointer-events: none;
+}
+
+.home-screen__insignia {
+  position: absolute;
+  top: 50%;
+  right: clamp(2rem, 8vw, 9rem);
+  z-index: 1;
+  display: grid;
+  width: 4.5rem;
+  justify-items: center;
+  gap: 0.7rem;
+  color: rgb(255 243 196 / 0.22);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.home-screen__insignia span {
+  font-family: "STKaiti", "KaiTi", serif;
+  font-size: clamp(4rem, 8vw, 7rem);
+  line-height: 0.8;
+  text-shadow: 0 0 2rem rgb(245 216 138 / 0.16);
+}
+
+.home-screen__insignia i {
+  display: block;
+  width: 1px;
+  height: 7rem;
+  background: linear-gradient(var(--gold-300), transparent);
+  opacity: 0.72;
+}
+
+.home-screen__insignia small {
+  writing-mode: vertical-rl;
+  font-size: 0.58rem;
+  letter-spacing: 0.34em;
 }
 
 .home-screen__topbar,
@@ -111,10 +154,15 @@ const emit = defineEmits<{
   padding: max(1.25rem, env(safe-area-inset-top)) max(1.5rem, env(safe-area-inset-right)) 1rem max(1.5rem, env(safe-area-inset-left));
 }
 
+.home-screen__topbar {
+  border-bottom: 1px solid rgb(255 243 196 / 0.08);
+  background: linear-gradient(180deg, rgb(3 8 7 / 0.22), transparent);
+}
+
 .home-screen__location,
 .home-screen__kicker {
   margin: 0;
-  color: rgb(253 230 138 / 0.68);
+  color: rgb(245 216 138 / 0.74);
   font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.28em;
@@ -152,9 +200,55 @@ const emit = defineEmits<{
 
 .home-screen__content {
   align-self: center;
+  position: relative;
   width: min(40rem, calc(100% - 3rem));
   margin-left: clamp(1.5rem, 8vw, 9rem);
   padding: 2rem 0 4rem;
+}
+
+.home-screen__content::before {
+  position: absolute;
+  top: 1.8rem;
+  bottom: 3.2rem;
+  left: -1.2rem;
+  width: 1px;
+  background: linear-gradient(var(--gold-300), rgb(245 216 138 / 0.08) 70%, transparent);
+  content: "";
+  opacity: 0.55;
+}
+
+.home-screen__content::after {
+  position: absolute;
+  top: 1.65rem;
+  left: -1.35rem;
+  width: 0.35rem;
+  height: 0.35rem;
+  border: 1px solid var(--gold-300);
+  background: var(--ink-900);
+  content: "";
+  transform: rotate(45deg);
+}
+
+.home-screen__kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.home-screen__kicker::before {
+  width: 2.8rem;
+  height: 1px;
+  background: var(--gold-500);
+  content: "";
+  opacity: 0.72;
+}
+
+.home-screen__kicker::after {
+  width: 0.3rem;
+  height: 0.3rem;
+  border: 1px solid var(--gold-300);
+  content: "";
+  transform: rotate(45deg);
 }
 
 .home-screen h1 {
@@ -165,7 +259,7 @@ const emit = defineEmits<{
   font-weight: 900;
   letter-spacing: 0.1em;
   line-height: 0.95;
-  text-shadow: 0 0.35rem 0 #3b2918, 0 1.2rem 3rem rgb(0 0 0 / 0.62);
+  text-shadow: 0 0.35rem 0 #3b2918, 0 1.2rem 3rem rgb(0 0 0 / 0.62), 0 0 2.5rem rgb(255 243 196 / 0.08);
 }
 
 .home-screen__lead {
@@ -187,11 +281,13 @@ const emit = defineEmits<{
   display: flex;
   align-items: center;
   gap: 0.55rem;
-  border: 1px solid rgb(127 174 126 / 0.24);
-  background: rgb(8 20 15 / 0.66);
+  border: 1px solid rgb(127 174 126 / 0.3);
+  border-top-color: rgb(245 216 138 / 0.32);
+  background: linear-gradient(135deg, rgb(8 20 15 / 0.78), rgb(8 20 15 / 0.48));
   padding: 0.55rem 0.75rem;
   color: #dbe9d4;
   font-size: 0.75rem;
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.04), 0 0.5rem 1.5rem rgb(0 0 0 / 0.12);
   backdrop-filter: blur(8px);
 }
 
@@ -210,12 +306,14 @@ const emit = defineEmits<{
   border: 1px solid rgb(255 225 133 / 0.76);
   border-left-width: 4px;
   border-radius: 0.2rem;
-  background: linear-gradient(110deg, rgb(109 75 28 / 0.82), rgb(37 55 36 / 0.82));
+  background:
+    linear-gradient(110deg, rgb(126 86 31 / 0.86), rgb(37 67 44 / 0.86)),
+    rgb(37 55 36 / 0.82);
   padding: 1rem 1.35rem;
   color: #fff1bd;
-  box-shadow: 0 0.8rem 2.5rem rgb(0 0 0 / 0.44), inset 0 0 1.5rem rgb(255 231 156 / 0.07);
+  box-shadow: 0 0.8rem 2.5rem rgb(0 0 0 / 0.44), inset 0 0 1.5rem rgb(255 231 156 / 0.07), inset 0 1px rgb(255 255 255 / 0.12);
   text-align: left;
-  transition: transform 160ms ease, border-color 160ms ease, filter 160ms ease;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, filter 160ms ease;
 }
 
 .home-screen__start:hover,
@@ -224,6 +322,11 @@ const emit = defineEmits<{
   filter: brightness(1.14);
   outline: none;
   transform: translateY(-2px);
+  box-shadow: 0 1rem 3rem rgb(0 0 0 / 0.52), 0 0 2rem rgb(245 216 138 / 0.12), inset 0 1px rgb(255 255 255 / 0.18);
+}
+
+.home-screen__start:active {
+  transform: translateY(0);
 }
 
 .home-screen__start span {
@@ -270,6 +373,12 @@ const emit = defineEmits<{
 }
 
 @media (max-width: 700px) {
+  .home-screen__insignia,
+  .home-screen__content::before,
+  .home-screen__content::after {
+    display: none;
+  }
+
   .home-screen__topbar {
     align-items: flex-start;
   }
