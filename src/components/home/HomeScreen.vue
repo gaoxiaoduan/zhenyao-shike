@@ -1,20 +1,27 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import caveBackgroundUrl from '../../assets/game/qingshi-cave-home.png'
+import type { RunHistorySnapshot } from '../../game/domain/runRecord'
 
 const props = withDefaults(defineProps<{
   fullscreenAvailable: boolean
   bossPracticeUnlocked?: boolean
+  runHistory?: RunHistorySnapshot
 }>(), {
   bossPracticeUnlocked: false,
 })
 
 const emit = defineEmits<{
   start: []
+  compactStart: []
+  openHistory: []
   practice: []
   openSettings: []
   openControls: []
   toggleFullscreen: []
 }>()
+
+const historyCount = computed(() => props.runHistory?.entries.length ?? 0)
 </script>
 
 <template>
@@ -36,6 +43,7 @@ const emit = defineEmits<{
         <p class="home-screen__name">散修 陈砺安</p>
       </div>
       <nav class="home-screen__utilities" aria-label="洞府工具">
+        <button type="button" aria-label="打开历练记录" @click="emit('openHistory')">历练记录<span v-if="historyCount"> {{ historyCount }}</span></button>
         <button type="button" @click="emit('openControls')">操作卷册</button>
         <button type="button" @click="emit('openSettings')">设置</button>
         <button v-if="props.fullscreenAvailable" type="button" @click="emit('toggleFullscreen')">全屏</button>
@@ -63,6 +71,15 @@ const emit = defineEmits<{
       >
         <span>入青石岭</span>
         <small>开始本次历练</small>
+      </button>
+      <button
+        class="home-screen__compact"
+        type="button"
+        aria-label="开始小窗历练"
+        @click="emit('compactStart')"
+      >
+        <span>小窗历练</span>
+        <small>紧凑布局 · 保留移动、自动攻击与升级</small>
       </button>
       <button
         v-if="props.bossPracticeUnlocked"
@@ -198,6 +215,11 @@ const emit = defineEmits<{
   outline: none;
 }
 
+.home-screen__utilities button span {
+  color: var(--gold-300);
+  font-variant-numeric: tabular-nums;
+}
+
 .home-screen__content {
   align-self: center;
   position: relative;
@@ -329,6 +351,32 @@ const emit = defineEmits<{
   transform: translateY(0);
 }
 
+.home-screen__compact {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  min-width: 17rem;
+  margin-top: 0.65rem;
+  border: 1px solid rgb(167 243 208 / 0.34);
+  border-left: 3px solid rgb(167 243 208 / 0.7);
+  border-radius: 0.2rem;
+  background: linear-gradient(110deg, rgb(22 70 52 / 0.58), rgb(13 34 27 / 0.72));
+  padding: 0.72rem 1.1rem;
+  color: #d1fae5;
+  text-align: left;
+  transition: border-color 160ms ease, transform 160ms ease, background-color 160ms ease;
+}
+
+.home-screen__compact:hover,
+.home-screen__compact:focus-visible {
+  border-color: rgb(167 243 208 / 0.8);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.home-screen__compact span { font-size: 1rem; font-weight: 800; letter-spacing: 0.12em; }
+.home-screen__compact small { color: rgb(209 250 229 / 0.65); font-size: 0.62rem; }
+
 .home-screen__start span {
   font-family: "STKaiti", "KaiTi", serif;
   font-size: 1.5rem;
@@ -385,7 +433,7 @@ const emit = defineEmits<{
 
   .home-screen__location,
   .home-screen__name,
-  .home-screen__utilities button:first-child,
+  .home-screen__utilities button:nth-child(2),
   .home-screen__utilities button:last-child,
   .home-screen__footer {
     display: none;
@@ -399,6 +447,10 @@ const emit = defineEmits<{
 
   .home-screen h1 {
     font-size: clamp(3rem, 18vw, 5rem);
+  }
+
+  .home-screen__compact {
+    width: 100%;
   }
 }
 </style>

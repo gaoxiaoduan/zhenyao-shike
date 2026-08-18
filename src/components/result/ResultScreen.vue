@@ -24,6 +24,11 @@ const damageLabels: Readonly<Record<DamageSource, string>> = {
   unknown: '历练终止',
 }
 
+const eventLabels = {
+  'demon-lair': '妖巢暴动',
+  lingquan: '灵泉涌现',
+} as const
+
 function formatTime(elapsedMs: number) {
   const totalSeconds = Math.floor(elapsedMs / 1000)
   const minutes = Math.floor(totalSeconds / 60)
@@ -49,6 +54,7 @@ function formatTime(elapsedMs: number) {
           <span v-else>
             {{ props.summary.result === 'victory' ? '啸月狼王已伏，山道暂得安宁。' : damageLabels[props.summary.finalDamageSource] }}
           </span>
+          <small v-if="!props.practiceMode" class="result-record-note">本局已写入历练记录</small>
         </div>
         <div class="result-seal" aria-hidden="true">{{ props.summary.result === 'victory' ? '胜' : '败' }}</div>
       </header>
@@ -56,6 +62,7 @@ function formatTime(elapsedMs: number) {
       <div class="result-stats" aria-label="历练数据">
         <div><small>坚持时间</small><strong>{{ formatTime(props.summary.elapsedMs) }}</strong></div>
         <div><small>斩妖数</small><strong>{{ props.summary.defeatedEnemies }}</strong></div>
+        <div v-if="props.summary.bossElapsedMs !== null"><small>妖王战</small><strong>{{ formatTime(props.summary.bossElapsedMs) }}</strong></div>
         <div><small>灵石</small><strong>+{{ props.summary.spiritStones }}</strong></div>
         <div><small>妖丹</small><strong>+{{ props.summary.demonCores }}</strong></div>
       </div>
@@ -76,7 +83,10 @@ function formatTime(elapsedMs: number) {
 
       <div class="result-event" :class="{ 'is-complete': props.summary.demonLairDestroyed }">
         <span>战场事件 · 妖巢暴动</span>
-        <strong>{{ props.summary.demonLairDestroyed ? '妖巢暴动已完成' : '妖巢暴动未完成' }}</strong>
+        <strong>
+          {{ props.summary.demonLairDestroyed ? '妖巢暴动已完成' : '妖巢暴动未完成' }}
+          <template v-if="props.summary.completedEvents.includes('lingquan')"> · {{ eventLabels.lingquan }}已完成</template>
+        </strong>
       </div>
 
       <aside class="result-hint">
@@ -184,6 +194,7 @@ function formatTime(elapsedMs: number) {
 }
 
 .result-card__header span { color: rgb(214 211 209 / 0.72); font-size: 0.82rem; }
+.result-record-note { display: block; margin-top: 0.35rem; color: rgb(167 243 208 / 0.7); font-size: 0.65rem; }
 .result-record { display: inline-block; margin: 0.25rem 0 0.5rem; border: 1px solid rgb(253 230 138 / 0.46); background: rgb(253 230 138 / 0.1); padding: 0.22rem 0.5rem; color: #fde68a; font-size: 0.65rem; letter-spacing: 0.14em; }
 
 .result-seal {
@@ -203,7 +214,7 @@ function formatTime(elapsedMs: number) {
 
 .result-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   margin-top: 1.6rem;
   border-block: 1px solid rgb(245 216 138 / 0.18);
 }
@@ -236,8 +247,8 @@ function formatTime(elapsedMs: number) {
 @media (max-width: 600px) {
   .result-seal { display: none; }
   .result-stats { grid-template-columns: repeat(2, 1fr); }
-  .result-stats div:nth-child(3) { border-left: none; border-top: 1px solid rgb(253 230 138 / 0.12); }
-  .result-stats div:nth-child(4) { border-top: 1px solid rgb(253 230 138 / 0.12); }
+  .result-stats div:nth-child(odd) { border-left: none; }
+  .result-stats div:nth-child(n+3) { border-top: 1px solid rgb(253 230 138 / 0.12); }
   .result-build__items { grid-template-columns: 1fr; }
   .result-actions { align-items: stretch; flex-direction: column; }
 }

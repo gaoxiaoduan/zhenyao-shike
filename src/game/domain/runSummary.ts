@@ -1,6 +1,7 @@
 import type { ArtifactId } from './artifactInventory'
 
 export type RunResult = 'victory' | 'defeat'
+export type RunEventId = 'demon-lair' | 'lingquan'
 export type DamageSource =
   | 'ordinary-enemy'
   | 'elite-enemy'
@@ -19,6 +20,8 @@ export interface RunSummaryInput {
   readonly elapsedMs: number
   readonly defeatedEnemies: number
   readonly defeatedElites: number
+  readonly bossElapsedMs: number | null
+  readonly completedEvents: readonly RunEventId[]
   readonly demonLairDestroyed: boolean
   readonly artifacts: readonly RunArtifactSummary[]
   readonly finalDamageSource: DamageSource
@@ -29,6 +32,9 @@ export interface RunSummary {
   readonly result: RunResult
   readonly elapsedMs: number
   readonly defeatedEnemies: number
+  readonly defeatedElites: number
+  readonly bossElapsedMs: number | null
+  readonly completedEvents: readonly RunEventId[]
   readonly artifacts: readonly RunArtifactSummary[]
   readonly spiritStones: number
   readonly demonCores: number
@@ -50,6 +56,9 @@ export function createRunSummary(input: RunSummaryInput): RunSummary {
     result: input.result,
     elapsedMs: input.elapsedMs,
     defeatedEnemies: input.defeatedEnemies,
+    defeatedElites: input.defeatedElites,
+    bossElapsedMs: input.bossElapsedMs,
+    completedEvents: [...input.completedEvents],
     artifacts: input.artifacts,
     spiritStones: input.practiceMode ? 0 : input.defeatedElites * 2 + (input.demonLairDestroyed ? 8 : 0),
     // Only the product shell knows whether this is the first victory for the current node.

@@ -25,16 +25,19 @@ const props = withDefaults(defineProps<{
   settings: GameSettings
   inputSuspended?: boolean
   practiceMode?: boolean
+  compactMode?: boolean
 }>(), {
   showOnboarding: true,
   inputSuspended: false,
   practiceMode: false,
+  compactMode: false,
 })
 
 const emit = defineEmits<{
   finished: [summary: RunSummary]
   onboardingCompleted: []
   toggleFullscreen: []
+  toggleCompactMode: []
   openSettings: []
   audioIntent: [intent: AudioIntent]
 }>()
@@ -47,6 +50,7 @@ const viewport = shallowRef(computeBattleViewport({
   width: window.innerWidth,
   height: window.innerHeight,
   desktop: desktopMedia.matches,
+  compact: props.compactMode,
 }))
 const emptySnapshot: GameSessionSnapshot = {
   lifecycle: 'active',
@@ -146,6 +150,9 @@ watch(() => props.inputSuspended, (suspended) => {
 })
 watch(() => props.settings.reducedMotion, (reducedMotion) => {
   session.value?.setReducedMotion(reducedMotion)
+})
+watch(() => props.compactMode, () => {
+  syncViewport()
 })
 
 function handleSessionSnapshot(snapshot: GameSessionSnapshot) {
@@ -251,6 +258,7 @@ function syncViewport() {
     width: window.innerWidth,
     height: window.innerHeight,
     desktop: desktopMedia.matches,
+    compact: props.compactMode,
   })
   viewport.value = nextViewport
   session.value?.resize(nextViewport)
@@ -351,7 +359,7 @@ onMounted(() => {
       desktop: desktopMedia.matches,
     }),
     reducedMotion: props.settings.reducedMotion,
-    compactRadar: !desktopMedia.matches,
+    compactRadar: !desktopMedia.matches || props.compactMode,
     runSeed: Date.now(),
     elapsedTimeScale: e2eTimeScale,
     onInstrumentation: e2eTimeScale > 1 ? recordE2eInstrumentation : undefined,
@@ -383,7 +391,10 @@ onUnmounted(() => {
 <template>
   <section
     class="battlefield relative min-h-svh overflow-hidden bg-[#08100d]"
-    :class="{ 'battlefield--with-wings': viewport.hasInformationWings }"
+    :class="{
+      'battlefield--with-wings': viewport.hasInformationWings && !props.compactMode,
+      'battlefield--compact': props.compactMode,
+    }"
     :style="battlefieldStyle"
   >
     <div class="battlefield__stage">
@@ -400,13 +411,22 @@ onUnmounted(() => {
       <button class="battlefield__tool-button" type="button" @click="emit('toggleFullscreen')">
         全屏
       </button>
+      <button
+        v-if="desktopMedia.matches || props.compactMode"
+        class="battlefield__tool-button"
+        type="button"
+        :aria-label="props.compactMode ? '切换标准布局' : '切换小窗布局'"
+        @click="emit('toggleCompactMode')"
+      >
+        {{ props.compactMode ? '标准布局' : '小窗' }}
+      </button>
       <button class="battlefield__tool-button" type="button" @click="togglePause">
         暂停
       </button>
     </div>
 
     <BattleTouchControls :snapshot="hudSnapshot" @cast="castSpell" @move="setTouchIntent" />
-    <BattleHud :snapshot="hudSnapshot" :key-bindings="settings.keyBindings" />
+    <BattleHud :snapshot="hudSnapshot" :key-bindings="settings.keyBindings" :compact="props.compactMode" />
 
     <div v-if="endingNotice" class="battlefield__ending" role="status" aria-live="assertive">
       <small>{{ endingNotice.result === 'victory' ? '妖王伏诛' : '致命一击' }}</small>

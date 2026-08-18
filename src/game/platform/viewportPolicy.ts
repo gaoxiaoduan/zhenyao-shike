@@ -10,6 +10,7 @@ export interface BattleViewportInput {
   readonly width: number
   readonly height: number
   readonly desktop: boolean
+  readonly compact?: boolean
 }
 
 export interface BattleViewport {
@@ -40,7 +41,9 @@ export function computeBattleViewport(input: BattleViewportInput): BattleViewpor
     internalHeight: BATTLE_DESIGN_HEIGHT,
     requiresOrientation: !input.desktop && input.height > input.width,
     requiresLargerWindow:
-      input.desktop && (input.width < MIN_DESKTOP_WIDTH || input.height < MIN_DESKTOP_HEIGHT),
+      input.desktop
+      && !input.compact
+      && (input.width < MIN_DESKTOP_WIDTH || input.height < MIN_DESKTOP_HEIGHT),
     hasInformationWings: windowAspect > BATTLE_MAX_ASPECT_RATIO,
   }
 }

@@ -1,25 +1,110 @@
 import { describe, expect, it } from 'vitest'
-import { hasBossPracticeUnlocked, recordRunResult, unlockBossPractice } from './runRecord'
+import type { RunSummary } from './runSummary'
+import {
+  createEmptyRunHistory,
+  hasBossPracticeUnlocked,
+  readRunHistory,
+  recordRunResult,
+  unlockBossPractice,
+} from './runRecord'
+
+function createSummary(overrides: Partial<RunSummary> = {}): RunSummary {
+  return {
+    result: 'defeat',
+    elapsedMs: 225_000,
+    defeatedEnemies: 42,
+    defeatedElites: 1,
+    bossElapsedMs: null,
+    completedEvents: [],
+    artifacts: [{ id: 'qing-feng-jian-xia', name: '青锋剑匣', level: 4 }],
+    spiritStones: 10,
+    demonCores: 0,
+    demonLairDestroyed: false,
+    finalDamageSource: 'ordinary-enemy',
+    hint: '保持移动。',
+    ...overrides,
+  }
+}
+
+function createStorage() {
+  const values = new Map<string, string>()
+  return {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+  }
+}
 
 describe('run record', () => {
-  it('marks and persists only longer runs as new records', () => {
-    const values = new Map<string, string>()
-    const storage = {
-      getItem: (key: string) => values.get(key) ?? null,
-      setItem: (key: string, value: string) => values.set(key, value),
+  it('persists failed and victorious runs with personal replay metrics', () => {
+    const storage = createStorage()
+
+    const first = recordRunResult(storage, createSummary(), 1_700_000_000_000)
+    const second = recordRunResult(storage, createSummary({
+      result: 'victory',
+      elapsedMs: 180_000,
+      defeatedEnemies: 55,
+      defeatedElites: 2,
+      bossElapsedMs: 42_000,
+      completedEvents: ['demon-lair', 'lingquan'],
+      finalDamageSource: 'unknown',
+    }), 1_700_000_001_000)
+
+    expect(first.isNewRecord).toBe(true)
+    expect(first.demonCoreEarned).toBe(false)
+    expect(second).toMatchObject({ isNewRecord: true, demonCoreEarned: true })
+    expect(second.history.best).toEqual({
+      fastestVictoryMs: 180_000,
+      mostKills: 55,
+      longestSurvivalMs: 225_000,
+    })
+    expect(second.history.entries.map((entry) => entry.result)).toEqual(['victory', 'defeat'])
+    expect(second.history.entries[0]).toMatchObject({
+      elapsedMs: 180_000,
+      defeatedEnemies: 55,
+      bossElapsedMs: 42_000,
+      completedEvents: ['demon-lair', 'lingquan'],
+    })
+    expect(readRunHistory(storage)).toEqual(second.history)
+  })
+
+  it('only grants the first victory reward and keeps the twelve newest runs', () => {
+    const storage = createStorage()
+
+    for (let index = 0; index < 13; index += 1) {
+      const update = recordRunResult(storage, createSummary({ elapsedMs: 100_000 + index * 1_000 }), 1_700_000_000_000 + index)
+      if (index === 0) {
+        expect(update.demonCoreEarned).toBe(false)
+      }
     }
 
-    expect(recordRunResult(storage, 225_000, 'defeat')).toEqual({ isNewRecord: true, demonCoreEarned: false })
-    expect(recordRunResult(storage, 180_000, 'victory')).toEqual({ isNewRecord: false, demonCoreEarned: true })
-    expect(recordRunResult(storage, 226_000, 'victory')).toEqual({ isNewRecord: true, demonCoreEarned: false })
+    const victory = recordRunResult(storage, createSummary({ result: 'victory' }), 1_700_000_000_100)
+    const repeatVictory = recordRunResult(storage, createSummary({ result: 'victory' }), 1_700_000_000_101)
+
+    expect(victory.demonCoreEarned).toBe(true)
+    expect(repeatVictory.demonCoreEarned).toBe(false)
+    expect(repeatVictory.history.entries).toHaveLength(12)
+    expect(repeatVictory.history.entries.at(-1)?.recordedAtMs).toBe(1_700_000_000_003)
+  })
+
+  it('does not call a slower victory a new record when the kill count is unchanged', () => {
+    const storage = createStorage()
+
+    recordRunResult(storage, createSummary({ result: 'victory', elapsedMs: 180_000, defeatedEnemies: 55 }), 1_700_000_000_000)
+    const slowerVictory = recordRunResult(storage, createSummary({ result: 'victory', elapsedMs: 240_000, defeatedEnemies: 55 }), 1_700_000_000_001)
+
+    expect(slowerVictory.isNewRecord).toBe(false)
+  })
+
+  it('returns an empty history when the saved payload is missing or malformed', () => {
+    const storage = createStorage()
+
+    expect(readRunHistory(storage)).toEqual(createEmptyRunHistory())
+    storage.setItem('zhenyao-shike.run-history.v1', '{"version":1,"entries":[null]}')
+    expect(readRunHistory(storage)).toEqual(createEmptyRunHistory())
   })
 
   it('unlocks the no-reward 妖王演练 independently from victory rewards', () => {
-    const values = new Map<string, string>()
-    const storage = {
-      getItem: (key: string) => values.get(key) ?? null,
-      setItem: (key: string, value: string) => values.set(key, value),
-    }
+    const storage = createStorage()
 
     expect(hasBossPracticeUnlocked(storage)).toBe(false)
     unlockBossPractice(storage)

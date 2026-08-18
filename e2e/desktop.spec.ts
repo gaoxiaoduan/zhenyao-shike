@@ -29,6 +29,32 @@ test('opens the polished cave hub and persists audio settings', async ({ page })
   await expect(page.getByRole('slider', { name: '音乐音量' })).toHaveValue('0.3')
 })
 
+test('opens saved personal 历练记录 from the cave hub', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('zhenyao-shike.run-history.v1', JSON.stringify({
+      version: 1,
+      entries: [{
+        id: 'run-e2e',
+        recordedAtMs: 1_700_000_000_000,
+        result: 'victory',
+        elapsedMs: 180_000,
+        defeatedEnemies: 55,
+        defeatedElites: 2,
+        bossElapsedMs: 42_000,
+        completedEvents: ['demon-lair', 'lingquan'],
+        artifacts: [{ id: 'qing-feng-jian-xia', name: '青锋剑匣', level: 5 }],
+        finalDamageSource: 'unknown',
+      }],
+    }))
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: '打开历练记录' }).click()
+
+  await expect(page.getByRole('dialog', { name: '历练记录' })).toContainText('最快胜场')
+  await expect(page.getByRole('dialog', { name: '历练记录' })).toContainText('妖王战 00:42')
+  await expect(page.getByRole('dialog', { name: '历练记录' })).toContainText('青锋剑匣 · Lv.5')
+})
+
 test('boots the real battlefield on a 1280 by 720 desktop', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 })
   await page.goto('/')
@@ -36,6 +62,19 @@ test('boots the real battlefield on a 1280 by 720 desktop', async ({ page }) => 
 
   await expect(page.getByLabel('青石岭战场')).toBeVisible()
   await expect(page.getByRole('dialog', { name: '选择初始法器' })).toBeVisible()
+})
+
+test('keeps a small desktop window playable in 小窗历练', async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 500 })
+  await page.goto('/')
+  await page.getByRole('button', { name: '开始小窗历练' }).click()
+
+  await expect(page.getByRole('dialog', { name: '选择初始法器' })).toBeVisible()
+  await page.getByRole('dialog', { name: '选择初始法器' }).getByRole('button').first().click()
+
+  await expect(page.getByLabel('青石岭战场')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '请扩大窗口' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '切换标准布局' })).toBeVisible()
 })
 
 test('unlocked 妖王演练 enters the boss directly without the mainline onboarding', async ({ page }) => {

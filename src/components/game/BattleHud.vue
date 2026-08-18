@@ -9,6 +9,7 @@ import ArtifactIcon from './ArtifactIcon.vue'
 const props = defineProps<{
   snapshot: BattleHudSnapshot | null
   keyBindings: KeyBindings
+  compact?: boolean
 }>()
 
 const spellKey = computed(() => displayControlKey(props.keyBindings.castSpell[0] ?? 'space'))
@@ -21,7 +22,7 @@ const eventProgress = computed(() => Math.max(0, Math.min(1, props.snapshot?.bat
 </script>
 
 <template>
-  <div class="battle-hud pointer-events-none absolute inset-0 z-20" aria-label="战斗信息">
+  <div class="battle-hud pointer-events-none absolute inset-0 z-20" :class="{ 'battle-hud--compact': props.compact }" aria-label="战斗信息">
     <section class="battle-hud__vitals" aria-label="主角状态">
       <div class="battle-hud__vitals-heading">
         <strong>陈砺安 · Lv.{{ snapshot?.level ?? 1 }}</strong>
@@ -59,7 +60,7 @@ const eventProgress = computed(() => Math.max(0, Math.min(1, props.snapshot?.bat
       <small v-if="snapshot.boss.breachRemainingMs">妖王破绽 · {{ (snapshot.boss.breachRemainingMs / 1000).toFixed(1) }} 秒</small>
     </section>
 
-    <aside class="battle-hud__wing battle-hud__wing--left">
+    <aside v-if="!props.compact" class="battle-hud__wing battle-hud__wing--left">
       <div class="battle-hud__eyebrow-row">
         <p class="battle-hud__eyebrow">本局构筑</p>
         <span>{{ snapshot?.artifacts.length ?? 0 }} / 4</span>
@@ -76,7 +77,7 @@ const eventProgress = computed(() => Math.max(0, Math.min(1, props.snapshot?.bat
       <p v-else class="battle-hud__muted">择定法器后，构筑将在此显现。</p>
     </aside>
 
-    <aside class="battle-hud__wing battle-hud__wing--right">
+    <aside v-if="!props.compact" class="battle-hud__wing battle-hud__wing--right">
       <div class="battle-hud__eyebrow-row">
         <p class="battle-hud__eyebrow">青石岭历练</p>
         <span>第 {{ snapshot?.level ?? 1 }} 境</span>
@@ -289,6 +290,27 @@ const eventProgress = computed(() => Math.max(0, Math.min(1, props.snapshot?.bat
 .battle-hud__event-bar i { display: block; height: 100%; background: linear-gradient(90deg, #ef4444, #fbbf24); transition: width 120ms linear; }
 .battle-hud__event--fountain .battle-hud__event-bar i { background: linear-gradient(90deg, #22d3ee, #a7f3d0); }
 .battle-hud__event small { display: block; margin-top: 0.3rem; color: rgb(254 226 226 / 0.7); font-size: 0.57rem; }
+
+.battle-hud--compact .battle-hud__vitals {
+  top: max(0.6rem, env(safe-area-inset-top));
+  left: max(0.6rem, env(safe-area-inset-left));
+  width: min(15rem, calc(100% - 1.2rem));
+  min-width: 0;
+  padding: 0.42rem 0.55rem;
+  transform: none;
+}
+
+.battle-hud--compact .battle-hud__vitals-heading { margin-bottom: 0.28rem; font-size: 0.62rem; }
+.battle-hud--compact .battle-hud__boss {
+  top: max(0.6rem, env(safe-area-inset-top));
+  right: max(0.6rem, env(safe-area-inset-right));
+  left: auto;
+  width: min(16rem, calc(100% - 18rem));
+  min-width: 0;
+  padding: 0.42rem 0.55rem;
+  transform: none;
+}
+.battle-hud--compact .battle-hud__event { bottom: max(0.6rem, env(safe-area-inset-bottom)); width: min(22rem, calc(100% - 1.2rem)); }
 
 .battle-hud__artifact strong,
 .battle-hud__artifact small,

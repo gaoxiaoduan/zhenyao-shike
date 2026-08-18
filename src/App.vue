@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { defineAsyncComponent, onUnmounted, shallowRef, watch } from 'vue'
 import HomeScreen from './components/home/HomeScreen.vue'
+import RunHistoryPanel from './components/home/RunHistoryPanel.vue'
 import ResultScreen from './components/result/ResultScreen.vue'
 import ControlsPanel from './components/settings/ControlsPanel.vue'
 import SettingsPanel from './components/settings/SettingsPanel.vue'
@@ -8,7 +9,7 @@ import { useGameSettings } from './composables/useGameSettings'
 import { createAudioDirector, type AudioIntent } from './game/audio/audioDirector'
 import { createBrowserAudioOutput } from './game/audio/browserAudioOutput'
 import type { RunSummary } from './game/domain/runSummary'
-import { hasBossPracticeUnlocked, recordRunResult, unlockBossPractice } from './game/domain/runRecord'
+import { hasBossPracticeUnlocked, readRunHistory, recordRunResult, unlockBossPractice } from './game/domain/runRecord'
 import { GROWTH_PHASE_DURATION_MS } from './game/domain/runProgress'
 import type { ControlAction, GameSettings } from './game/settings/gameSettings'
 import { CONTROL_ACTION_LABELS } from './game/settings/controlPresentation'
@@ -16,7 +17,7 @@ import { CONTROL_ACTION_LABELS } from './game/settings/controlPresentation'
 const BattlefieldGame = defineAsyncComponent(() => import('./components/BattlefieldGame.vue'))
 
 type Screen = 'home' | 'run' | 'result'
-type Overlay = 'settings' | 'controls' | null
+type Overlay = 'settings' | 'controls' | 'history' | null
 
 const screen = shallowRef<Screen>('home')
 const overlay = shallowRef<Overlay>(null)
@@ -25,7 +26,10 @@ const isNewRecord = shallowRef(false)
 const practiceResult = shallowRef(false)
 const showOnboarding = shallowRef(true)
 const practiceMode = shallowRef(false)
+const compactMode = shallowRef(false)
+const runWasCompact = shallowRef(false)
 const bossPracticeUnlocked = shallowRef(hasBossPracticeUnlocked(window.localStorage))
+const runHistory = shallowRef(readRunHistory(window.localStorage))
 const rebindError = shallowRef<string | null>(null)
 const fullscreenAvailable = shallowRef(Boolean(document.fullscreenEnabled))
 const desktopMedia = window.matchMedia('(hover: hover) and (pointer: fine)')
@@ -47,7 +51,7 @@ function handleAudioIntent(intent: AudioIntent) {
   audioDirector.handle(intent)
 }
 
-function startRun(isPractice = false) {
+function startRun(isPractice = false, isCompact = false) {
   unlockAudio()
   if (!desktopMedia.matches && document.fullscreenEnabled && !document.fullscreenElement) {
     void document.documentElement.requestFullscreen().catch(() => undefined)
@@ -56,6 +60,8 @@ function startRun(isPractice = false) {
   audioDirector.handle({ type: 'pause', mode: 'active' })
   overlay.value = null
   practiceMode.value = isPractice
+  compactMode.value = isCompact
+  runWasCompact.value = isCompact
   if (isPractice) {
     showOnboarding.value = false
   }
@@ -79,11 +85,16 @@ function finishRun(summary: RunSummary) {
     unlockBossPractice(window.localStorage)
     bossPracticeUnlocked.value = true
   }
-  const record = wasPractice
-    ? { isNewRecord: false, demonCoreEarned: false }
-    : recordRunResult(window.localStorage, summary.elapsedMs, summary.result)
-  lastResult.value = { ...summary, demonCores: record.demonCoreEarned ? 1 : 0 }
-  isNewRecord.value = record.isNewRecord
+  let nextIsNewRecord = false
+  let demonCoreEarned = false
+  if (!wasPractice) {
+    const record = recordRunResult(window.localStorage, summary)
+    nextIsNewRecord = record.isNewRecord
+    demonCoreEarned = record.demonCoreEarned
+    runHistory.value = record.history
+  }
+  lastResult.value = { ...summary, demonCores: demonCoreEarned ? 1 : 0 }
+  isNewRecord.value = nextIsNewRecord
   practiceResult.value = wasPractice
   practiceMode.value = false
   audioDirector.handle({ type: 'music', stage: summary.result })
@@ -96,7 +107,16 @@ function returnHome() {
   audioDirector.handle({ type: 'music', stage: 'home' })
   audioDirector.handle({ type: 'pause', mode: 'active' })
   overlay.value = null
+  compactMode.value = false
   screen.value = 'home'
+}
+
+function retryRun() {
+  startRun(practiceResult.value, runWasCompact.value)
+}
+
+function toggleCompactMode() {
+  compactMode.value = !compactMode.value
 }
 
 function openOverlay(nextOverlay: Exclude<Overlay, null>) {
@@ -145,6 +165,9 @@ onUnmounted(() => {
       :fullscreen-available="fullscreenAvailable"
       :boss-practice-unlocked="bossPracticeUnlocked"
       @start="startRun"
+      :run-history="runHistory"
+      @compact-start="startRun(false, true)"
+      @open-history="openOverlay('history')"
       @practice="startRun(true)"
       @open-settings="openOverlay('settings')"
       @open-controls="openOverlay('controls')"
@@ -156,10 +179,12 @@ onUnmounted(() => {
       :settings="settings"
       :show-onboarding="showOnboarding"
       :practice-mode="practiceMode"
+      :compact-mode="compactMode"
       :input-suspended="overlay !== null"
       @finished="finishRun"
       @onboarding-completed="showOnboarding = false"
       @toggle-fullscreen="toggleFullscreen"
+      @toggle-compact-mode="toggleCompactMode"
       @open-settings="openOverlay('settings')"
       @audio-intent="handleAudioIntent"
     />
@@ -169,8 +194,14 @@ onUnmounted(() => {
       :summary="lastResult"
       :new-record="isNewRecord"
       :practice-mode="practiceResult"
-      @retry="startRun"
+      @retry="retryRun"
       @home="returnHome"
+    />
+
+    <RunHistoryPanel
+      v-if="overlay === 'history'"
+      :history="runHistory"
+      @close="closeOverlay"
     />
 
     <SettingsPanel

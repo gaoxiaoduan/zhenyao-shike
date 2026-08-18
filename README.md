@@ -31,4 +31,4 @@ pnpm run deploy
 Wrangler 配置位于 `wrangler.jsonc`，生产 Custom Domain 为
 `zhenyao.33338888.xyz`。首次部署前需要在 Cloudflare 账户中完成 Wrangler 登录。
 
-当前版本的游戏状态和设置保存在浏览器本地，不提供登录、云存档或玩法统计。
+当前版本的游戏状态、设置和个人历练记录保存在浏览器本地，不提供登录、云存档或全球排行榜。

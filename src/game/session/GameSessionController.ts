@@ -80,6 +80,7 @@ function freezeDecision(decision: GameSessionDecision): GameSessionDecision {
 function freezeRunSummary(summary: Extract<GameSessionResult, { state: 'ended' }>['summary']) {
   return Object.freeze({
     ...summary,
+    completedEvents: Object.freeze([...summary.completedEvents]),
     artifacts: Object.freeze(summary.artifacts.map((artifact) => Object.freeze({ ...artifact }))),
   })
 }

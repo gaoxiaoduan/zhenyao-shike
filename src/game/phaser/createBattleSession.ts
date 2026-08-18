@@ -85,7 +85,7 @@ import {
   GROWTH_PHASE_DURATION_MS,
   type RunProgress,
 } from '../domain/runProgress'
-import { createRunSummary, type DamageSource, type RunResult } from '../domain/runSummary'
+import { createRunSummary, type DamageSource, type RunEventId, type RunResult } from '../domain/runSummary'
 import {
   advanceWolfKingEncounter,
   createWolfKingEncounter,
@@ -277,6 +277,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
   private randomState = 1
   private boss?: WolfKingEncounter
   private bossSpatial?: BossSpatialState
+  private bossStartedElapsedMs: number | null = null
   private bossHowlRemainingMs = 0
   private bossHowlElapsedMs = 0
   private bossHowlDirectionX = 0
@@ -768,6 +769,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
     const angle = this.randomBetween(0, Math.PI * 2)
     const distance = 180
     this.boss = createWolfKingEncounter()
+    this.bossStartedElapsedMs = this.progress.elapsedMs
     this.bossSpatial = {
       kind: 'boss',
       x: Phaser.Math.Clamp(this.player.x + Math.cos(angle) * distance, 80, WORLD_SIZE - 80),
@@ -1024,6 +1026,13 @@ export class QingShiRidgeScene extends Phaser.Scene {
       elapsedMs: this.progress.elapsedMs,
       defeatedEnemies: this.defeatedEnemies,
       defeatedElites: this.defeatedElites,
+      bossElapsedMs: this.bossStartedElapsedMs === null
+        ? null
+        : Math.max(0, this.progress.elapsedMs - this.bossStartedElapsedMs),
+      completedEvents: [
+        ...(this.demonLair.phase === 'completed' ? ['demon-lair' as const] : []),
+        ...(this.lingquanEvent.phase === 'completed' ? ['lingquan' as const] : []),
+      ] satisfies readonly RunEventId[],
       demonLairDestroyed: this.demonLair.phase === 'completed',
       artifacts: this.inventory.slots.map((slot) => ({
         id: slot.id,

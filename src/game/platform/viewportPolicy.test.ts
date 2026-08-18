@@ -37,6 +37,13 @@ describe('computeBattleViewport', () => {
     })
   })
 
+  it('keeps a compact desktop run playable below the standard window minimum', () => {
+    expect(computeBattleViewport({ width: 800, height: 500, desktop: true, compact: true })).toMatchObject({
+      requiresOrientation: false,
+      requiresLargerWindow: false,
+    })
+  })
+
   it('requires landscape only for a portrait mobile viewport', () => {
     expect(computeBattleViewport({ width: 430, height: 932, desktop: false })).toMatchObject({
       requiresOrientation: true,
