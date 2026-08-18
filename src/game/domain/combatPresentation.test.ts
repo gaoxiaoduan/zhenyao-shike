@@ -30,8 +30,22 @@ describe('semantic combat presentation', () => {
     expect(presentation.telegraph).toBe('charge-lane')
     expect(presentation.silhouette).toBe('boar-demon')
     expect(presentation.textureKey).toBe('qingshi-common-actors')
-    expect(presentation.frame).toBe(1)
+    expect(presentation.frame).toBe(2)
     expect(presentation.scale).toBeLessThan(1)
+
+    const walkingFrame = resolveEnemyPresentation({
+      id: 'qing-shi-ridge-boar-demon',
+      isElite: false,
+      isMoonShadow: false,
+      action: 'approach',
+      actionRemainingMs: 0,
+      recoveryIsVulnerable: false,
+      hitFlashMs: 0,
+      facingX: 1,
+      elapsedMs: 121,
+      reducedMotion: false,
+    })
+    expect(walkingFrame.frame).toBe(1)
   })
 
   it('gives an elite miss a distinct vulnerable silhouette without changing its lineage', () => {
@@ -54,7 +68,37 @@ describe('semantic combat presentation', () => {
     expect(presentation.accentColor).toBe(0xfbbf24)
     expect(presentation.flipX).toBe(true)
     expect(presentation.textureKey).toBe('qingshi-common-actors')
-    expect(presentation.frame).toBe(15)
+    expect(presentation.frame).toBe(23)
+  })
+
+  it('cycles an elite pounce through six readable pixel poses', () => {
+    const first = resolveEnemyPresentation({
+      id: 'qing-shi-ridge-elite-wolf',
+      isElite: true,
+      isMoonShadow: false,
+      action: 'charge',
+      actionRemainingMs: 420,
+      recoveryIsVulnerable: false,
+      hitFlashMs: 0,
+      facingX: 1,
+      elapsedMs: 0,
+      reducedMotion: false,
+    })
+    const last = resolveEnemyPresentation({
+      id: 'qing-shi-ridge-elite-wolf',
+      isElite: true,
+      isMoonShadow: false,
+      action: 'charge',
+      actionRemainingMs: 120,
+      recoveryIsVulnerable: false,
+      hitFlashMs: 0,
+      facingX: 1,
+      elapsedMs: 600,
+      reducedMotion: false,
+    })
+
+    expect(first.frame).toBe(18)
+    expect(last.frame).toBe(23)
   })
 
   it('keeps moon shadows visually separate from ordinary wood wolves', () => {

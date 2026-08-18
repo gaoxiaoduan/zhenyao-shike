@@ -2,7 +2,7 @@ import * as Phaser from 'phaser'
 import actorAtlasUrl from '../../assets/game/qingshi-actors.png'
 import combatActorAtlasUrl from '../../assets/game/qingshi-combat-actors.png'
 import commonActorAtlasUrl from '../../assets/game/qingshi-common-actors.png'
-import artifactIconsAtlasUrl from '../../assets/game/artifact-icons.png'
+import artifactCombatEffectsAtlasUrl from '../../assets/game/artifact-combat-effects.png'
 import groundTextureUrl from '../../assets/game/qingshi-ground.png'
 import { musicStageForRun, type MusicStage, type SoundCue } from '../audio/audioDirector'
 import {
@@ -363,7 +363,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
     this.load.spritesheet('qingshi-actors', actorAtlasUrl, { frameWidth: 512, frameHeight: 512 })
     this.load.spritesheet('qingshi-common-actors', commonActorAtlasUrl, { frameWidth: 256, frameHeight: 256 })
     this.load.spritesheet('qingshi-combat-actors', combatActorAtlasUrl, { frameWidth: 256, frameHeight: 768 })
-    this.load.image('artifact-icons', artifactIconsAtlasUrl)
+    this.load.spritesheet('artifact-combat-effects', artifactCombatEffectsAtlasUrl, { frameWidth: 128, frameHeight: 128 })
   }
 
   create() {
@@ -1165,7 +1165,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
       height: cam.worldView.height || 600,
     }
 
-    let spawnPos = getOffscreenSpawnPosition(cameraWorld, WORLD_SIZE, 80)
+    let spawnPos = getOffscreenSpawnPosition(cameraWorld, WORLD_SIZE, 80, () => this.nextRandom())
     const spawnElite = forceElite || this.isEliteSpawnDue()
     const waveStage = getDemonWaveStage(this.progress.elapsedMs)
     const enemyId: QingShiRidgeEnemyId = spawnElite
@@ -1990,10 +1990,10 @@ export class QingShiRidgeScene extends Phaser.Scene {
       : id === 'qing-shi-ridge-boar-demon'
         ? 0
         : id === 'qing-shi-ridge-mist-moth'
-          ? 8
+          ? 12
           : id === 'qing-shi-ridge-elite-wolf'
-            ? 12
-            : 4
+            ? 18
+            : 6
     const sprite = this.enemySpritePool.pop() ?? this.add.image(x, y, textureKey, frame)
     return sprite
       .setActive(true)
@@ -2529,12 +2529,12 @@ export class QingShiRidgeScene extends Phaser.Scene {
       'liu-guang-jian-yi': 5,
       'jiu-xiao-lei-zhen': 6,
     }[projectile.artifactId]
+    const animationFrame = this.reducedMotion ? 0 : Math.floor(this.presentationElapsedMs / 90) % 4
+    const combatFrame = iconIndex * 4 + animationFrame
     const icon = this.artifactProjectileSprites[index]
-      ?? (this.artifactProjectileSprites[index] = this.add.image(projectile.x, projectile.y, 'artifact-icons'))
-    const iconColumn = iconIndex % 4
-    const iconRow = iconIndex >= 4 ? 1 : 0
+      ?? (this.artifactProjectileSprites[index] = this.add.image(projectile.x, projectile.y, 'artifact-combat-effects', combatFrame))
     icon
-      .setCrop(iconColumn * 350, iconRow * 561, 350, 561)
+      .setTexture('artifact-combat-effects', combatFrame)
       .setPosition(projectile.x, projectile.y)
       .setDisplaySize(signature.isHighTier ? 30 : 24, signature.isHighTier ? 34 : 28)
       .setRotation(Math.atan2(directionY, directionX) + Math.PI / 2)

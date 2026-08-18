@@ -58,17 +58,31 @@ const ENEMY_SILHOUETTES: Readonly<Record<EnemyVisualSilhouette, {
 
 const COMMON_ACTOR_FRAME_START: Readonly<Record<Exclude<EnemyVisualSilhouette, 'moon-shadow'>, number>> = {
   'boar-demon': 0,
-  'wood-wolf': 4,
-  'mist-moth': 8,
-  'elite-wolf': 12,
+  'wood-wolf': 6,
+  'mist-moth': 12,
+  'elite-wolf': 18,
 }
 
-const COMMON_ACTOR_POSE_FRAME: Readonly<Record<EnemyVisualPose, number>> = {
-  approach: 0,
-  windup: 1,
-  attack: 2,
-  recover: 3,
-  hit: 3,
+function commonActorPoseFrame(
+  silhouette: Exclude<EnemyVisualSilhouette, 'moon-shadow'>,
+  pose: EnemyVisualPose,
+  elapsedMs: number,
+  reducedMotion: boolean,
+) {
+  const animationStep = reducedMotion ? 0 : Math.floor(Math.max(0, elapsedMs) / 120)
+  if (silhouette === 'elite-wolf' && pose === 'attack') {
+    return animationStep % 6
+  }
+  if (pose === 'approach') {
+    return animationStep % 2
+  }
+  if (pose === 'windup') {
+    return 2
+  }
+  if (pose === 'attack') {
+    return 3 + animationStep % 2
+  }
+  return 5
 }
 
 function enemySilhouette(input: EnemyPresentationInput): EnemyVisualSilhouette {
@@ -116,6 +130,9 @@ export function resolveEnemyPresentation(input: EnemyPresentationInput): EnemyPr
         : input.action === 'recover'
           ? 'recover'
           : 'approach'
+  const commonPoseFrame = silhouette === 'moon-shadow'
+    ? 0
+    : commonActorPoseFrame(silhouette, pose, input.elapsedMs, input.reducedMotion)
   const isVulnerable = input.recoveryIsVulnerable && input.action === 'recover'
   const telegraph: EnemyTelegraph = isVulnerable
     ? 'vulnerable-crack'
@@ -128,7 +145,7 @@ export function resolveEnemyPresentation(input: EnemyPresentationInput): EnemyPr
           : role === 'pursuer-flanker'
             ? 'flank'
             : 'none'
-  const dynamicMotion = input.reducedMotion ? 0 : Math.sin(input.elapsedMs / 90 + COMMON_ACTOR_POSE_FRAME[pose])
+  const dynamicMotion = input.reducedMotion ? 0 : Math.sin(input.elapsedMs / 90 + commonPoseFrame)
   const poseScale = input.reducedMotion
     ? 1
     : pose === 'windup'
@@ -157,7 +174,7 @@ export function resolveEnemyPresentation(input: EnemyPresentationInput): EnemyPr
         : pose === 'recover'
           ? 3
           : 0
-    : COMMON_ACTOR_FRAME_START[silhouette] + COMMON_ACTOR_POSE_FRAME[pose]
+    : COMMON_ACTOR_FRAME_START[silhouette] + commonPoseFrame
 
   return {
     textureKey: silhouette === 'moon-shadow' ? 'qingshi-combat-actors' : 'qingshi-common-actors',
