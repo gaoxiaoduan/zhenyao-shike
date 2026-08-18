@@ -1,0 +1,123 @@
+import { describe, expect, it } from 'vitest'
+import type { ArtifactId } from './artifactInventory'
+import {
+  resolveArtifactVisualSignature,
+  resolveBossPresentation,
+  resolveEnemyPresentation,
+} from './combatPresentation'
+
+describe('semantic combat presentation', () => {
+  it('turns a boar windup into a readable charge pose and lane telegraph', () => {
+    const presentation = resolveEnemyPresentation({
+      id: 'qing-shi-ridge-boar-demon',
+      isElite: false,
+      isMoonShadow: false,
+      action: 'windup',
+      actionRemainingMs: 500,
+      recoveryIsVulnerable: false,
+      hitFlashMs: 0,
+      facingX: 1,
+      elapsedMs: 0,
+      reducedMotion: false,
+    })
+
+    expect(presentation.pose).toBe('windup')
+    expect(presentation.telegraph).toBe('charge-lane')
+    expect(presentation.silhouette).toBe('boar-demon')
+    expect(presentation.scale).toBeLessThan(1)
+  })
+
+  it('gives an elite miss a distinct vulnerable silhouette without changing its lineage', () => {
+    const presentation = resolveEnemyPresentation({
+      id: 'qing-shi-ridge-elite-wolf',
+      isElite: true,
+      isMoonShadow: false,
+      action: 'recover',
+      actionRemainingMs: 700,
+      recoveryIsVulnerable: true,
+      hitFlashMs: 0,
+      facingX: -1,
+      elapsedMs: 120,
+      reducedMotion: false,
+    })
+
+    expect(presentation.silhouette).toBe('elite-wolf')
+    expect(presentation.telegraph).toBe('vulnerable-crack')
+    expect(presentation.isVulnerable).toBe(true)
+    expect(presentation.accentColor).toBe(0xfbbf24)
+    expect(presentation.flipX).toBe(true)
+  })
+
+  it('keeps moon shadows visually separate from ordinary wood wolves', () => {
+    const presentation = resolveEnemyPresentation({
+      id: 'xiaoyue-wolf-king-moon-shadow',
+      isElite: false,
+      isMoonShadow: true,
+      action: 'approach',
+      actionRemainingMs: 0,
+      recoveryIsVulnerable: false,
+      hitFlashMs: 0,
+      facingX: 1,
+      elapsedMs: 240,
+      reducedMotion: true,
+    })
+
+    expect(presentation.silhouette).toBe('moon-shadow')
+    expect(presentation.tint).toBe(0x2e1065)
+    expect(presentation.telegraph).toBe('moon-shadow')
+    expect(presentation.bob).toBe(0)
+  })
+
+  it('gives the boss a broken moon identity and a readable breach state', () => {
+    const enraged = resolveBossPresentation({
+      phase: 'enraged',
+      attack: 'assault-warning',
+      introRemainingMs: 0,
+      howlRemainingMs: 0,
+      breachRemainingMs: 0,
+      elapsedMs: 400,
+      reducedMotion: false,
+    })
+    const breach = resolveBossPresentation({
+      phase: 'enraged',
+      attack: 'none',
+      introRemainingMs: 0,
+      howlRemainingMs: 0,
+      breachRemainingMs: 900,
+      elapsedMs: 400,
+      reducedMotion: true,
+    })
+
+    expect(enraged.halo).toBe('cracked-moon')
+    expect(enraged.shadowSplit).toBe(true)
+    expect(enraged.telegraph).toBe('assault-lane')
+    expect(breach.halo).toBe('breach-open')
+    expect(breach.moonMarkOpen).toBe(true)
+    expect(breach.shake).toBe(0)
+  })
+
+  it('maps every implemented artifact to a source motif and a distinct macro shape', () => {
+    const artifactIds: ArtifactId[] = [
+      'qing-feng-jian-xia',
+      'lei-zhuan-fu-ce',
+      'si-xiang-zhen-qi',
+      'fu-yao-yu-yi',
+      'zhu-xie-jian-zhen',
+      'liu-guang-jian-yi',
+      'jiu-xiao-lei-zhen',
+    ]
+    const signatures = artifactIds.map(resolveArtifactVisualSignature)
+
+    expect(signatures.map((signature) => signature.family)).toEqual([
+      'sword',
+      'thunder',
+      'array',
+      'wind',
+      'sword',
+      'wind',
+      'thunder',
+    ])
+    expect(signatures.slice(4).every((signature) => signature.isHighTier)).toBe(true)
+    expect(new Set(signatures.map((signature) => signature.macroShape)).size).toBe(signatures.length)
+  })
+})
