@@ -2432,22 +2432,6 @@ export class QingShiRidgeScene extends Phaser.Scene {
     } else {
       this.playerSprite.clearTint()
     }
-    if (playerPose === 'walk' || playerPose === 'cast') {
-      const facingLength = playerPose === 'cast' ? 34 : 24
-      const tailX = this.player.x - this.playerFacingX * facingLength
-      const tailY = this.player.y - this.playerFacingY * facingLength + 18
-      this.graphics.lineStyle(playerPose === 'cast' ? 4 : 3, playerPose === 'cast' ? 0xbae6fd : 0xc49a63, 0.72)
-      this.graphics.lineBetween(this.player.x, this.player.y + 13, tailX, tailY)
-      this.graphics.fillStyle(playerPose === 'cast' ? 0x67e8f9 : 0xd6b96d, 0.72)
-      this.graphics.fillTriangle(
-        tailX,
-        tailY,
-        tailX - this.playerFacingY * 7,
-        tailY + this.playerFacingX * 7,
-        tailX + this.playerFacingY * 7,
-        tailY - this.playerFacingX * 7,
-      )
-    }
     if (this.playerHitSparkMs > 0) {
       const sparkProgress = 1 - this.playerHitSparkMs / 220
       const sparkAlpha = Math.max(0, 1 - sparkProgress)
@@ -2653,17 +2637,19 @@ export class QingShiRidgeScene extends Phaser.Scene {
       ? enemy.chargeDirectionY
       : (this.player.y - enemy.y) / Math.max(Phaser.Math.Distance.Between(enemy.x, enemy.y, this.player.x, this.player.y), 1)
     if (presentation.telegraph === 'charge-lane') {
-      const warningLength = presentation.silhouette === 'elite-wolf' ? 250 : 150
-      this.graphics.lineStyle(presentation.silhouette === 'elite-wolf' ? 5 : 3, presentation.accentColor, 0.9)
-      this.graphics.lineBetween(enemy.x, enemy.y, enemy.x + directionX * warningLength, enemy.y + directionY * warningLength)
-      this.graphics.fillStyle(presentation.accentColor, 0.24).fillTriangle(
-        enemy.x + directionX * warningLength,
-        enemy.y + directionY * warningLength,
-        enemy.x + directionX * (warningLength - 20) - directionY * 9,
-        enemy.y + directionY * (warningLength - 20) + directionX * 9,
-        enemy.x + directionX * (warningLength - 20) + directionY * 9,
-        enemy.y + directionY * (warningLength - 20) - directionX * 9,
-      )
+      if (presentation.silhouette !== 'boar-demon') {
+        const warningLength = presentation.silhouette === 'elite-wolf' ? 250 : 150
+        this.graphics.lineStyle(presentation.silhouette === 'elite-wolf' ? 5 : 3, presentation.accentColor, 0.9)
+        this.graphics.lineBetween(enemy.x, enemy.y, enemy.x + directionX * warningLength, enemy.y + directionY * warningLength)
+        this.graphics.fillStyle(presentation.accentColor, 0.24).fillTriangle(
+          enemy.x + directionX * warningLength,
+          enemy.y + directionY * warningLength,
+          enemy.x + directionX * (warningLength - 20) - directionY * 9,
+          enemy.y + directionY * (warningLength - 20) + directionX * 9,
+          enemy.x + directionX * (warningLength - 20) + directionY * 9,
+          enemy.y + directionY * (warningLength - 20) - directionX * 9,
+        )
+      }
       this.graphics.strokeCircle(enemy.x, enemy.y, enemy.radius + 10)
     } else if (presentation.telegraph === 'vulnerable-crack') {
       this.graphics.lineStyle(3, presentation.accentColor, 0.95)
