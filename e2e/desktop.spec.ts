@@ -55,6 +55,10 @@ test('selects cards with number keys and exposes the full-world battle radar', a
 
   await expect(page.getByRole('dialog', { name: '选择初始法器' })).toBeHidden()
   await expect(page.getByLabel('战斗信息')).toContainText('青锋剑匣')
+  await expect.poll(
+    async () => battlefield.getAttribute('data-presentation-checkpoint'),
+    { timeout: 5_000 },
+  ).toBe('opening-00-30')
   await expect.poll(async () => Number(await battlefield.getAttribute('data-radar-enemy-regions'))).toBeGreaterThan(0)
   await expect.poll(async () => Number(await battlefield.getAttribute('data-movement-distance'))).toBeGreaterThan(0)
   const distanceBeforeSpell = Number(await battlefield.getAttribute('data-movement-distance'))

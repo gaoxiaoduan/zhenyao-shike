@@ -129,4 +129,43 @@ describe('Phaser battle runtime adapter', () => {
 
     expect(outputs).toContainEqual(expect.objectContaining({ type: 'ascension-requested' }))
   })
+
+  it('uses one fixed presentation seed for accelerated acceptance runs', () => {
+    const first = new QingShiRidgeScene(
+      () => undefined,
+      1,
+      false,
+      1280,
+      720,
+      false,
+      11,
+      30,
+      undefined,
+      true,
+    ) as unknown as {
+      terrainLayout: unknown
+      upgradeDraftState: unknown
+      lingquanEvent: unknown
+    }
+    const second = new QingShiRidgeScene(
+      () => undefined,
+      1,
+      false,
+      1280,
+      720,
+      false,
+      99_999,
+      30,
+      undefined,
+      true,
+    ) as unknown as {
+      terrainLayout: unknown
+      upgradeDraftState: unknown
+      lingquanEvent: unknown
+    }
+
+    expect(first.terrainLayout).toEqual(second.terrainLayout)
+    expect(first.upgradeDraftState).toEqual(second.upgradeDraftState)
+    expect(first.lingquanEvent).toEqual(second.lingquanEvent)
+  })
 })

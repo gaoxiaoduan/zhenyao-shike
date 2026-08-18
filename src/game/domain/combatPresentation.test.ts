@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { ArtifactId } from './artifactInventory'
 import {
+  QING_SHI_RIDGE_PRESENTATION_CHECKPOINTS,
+  resolveCombatPresentationCheckpoint,
+} from './combatPresentationAcceptance'
+import {
   resolveCombatVisualSignature,
   resolveArtifactVisualSignature,
   resolveBossPresentation,
@@ -132,5 +136,17 @@ describe('semantic combat presentation', () => {
     expect(signature.family).toBe('spell')
     expect(signature.macroShape).toBe('protective-talisman-shield')
     expect(signature.sourceMotif).toContain('结印玄光')
+  })
+
+  it('keeps the visual review checkpoints stable across accelerated acceptance runs', () => {
+    expect(QING_SHI_RIDGE_PRESENTATION_CHECKPOINTS.map(({ id, elapsedMs }) => [id, elapsedMs])).toEqual([
+      ['opening-00-30', 30_000],
+      ['surge-02-00', 120_000],
+      ['event-04-00', 240_000],
+      ['boss-08-30', 510_000],
+    ])
+    expect(resolveCombatPresentationCheckpoint(29_999)).toBeNull()
+    expect(resolveCombatPresentationCheckpoint(30_000)?.id).toBe('opening-00-30')
+    expect(resolveCombatPresentationCheckpoint(510_000)?.id).toBe('boss-08-30')
   })
 })

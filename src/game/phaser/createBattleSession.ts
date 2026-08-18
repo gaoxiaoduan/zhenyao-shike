@@ -1,6 +1,7 @@
 import * as Phaser from 'phaser'
 import actorAtlasUrl from '../../assets/game/qingshi-actors.png'
 import combatActorAtlasUrl from '../../assets/game/qingshi-combat-actors.png'
+import artifactIconsAtlasUrl from '../../assets/game/artifact-icons.png'
 import groundTextureUrl from '../../assets/game/qingshi-ground.png'
 import { musicStageForRun, type MusicStage, type SoundCue } from '../audio/audioDirector'
 import {
@@ -52,6 +53,7 @@ import {
   resolveCombatVisualSignature,
   resolveEnemyPresentation,
 } from '../domain/combatPresentation'
+import { resolveCombatPresentationCheckpoint } from '../domain/combatPresentationAcceptance'
 import {
   advanceDemonLairEvent,
   advanceLingquanEvent,
@@ -217,6 +219,8 @@ interface CombatBurst {
   radius: number
 }
 
+const DETERMINISTIC_ACCEPTANCE_SEED = 20260818
+
 export class QingShiRidgeScene extends Phaser.Scene {
   private readonly reportRuntimeOutput: (event: BattleRuntimeOutput) => void
   private readonly renderScale: number
@@ -237,6 +241,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
   private enemies: Enemy[] = []
   private enemySpritePool: Phaser.GameObjects.Image[] = []
   private projectiles: Projectile[] = []
+  private artifactProjectileSprites: Phaser.GameObjects.Image[] = []
   private enemyProjectiles: EnemyProjectile[] = []
   private spirits: Spirit[] = []
   private thunderEffects: ThunderEffect[] = []
@@ -255,7 +260,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
   private playerDamageMultiplier = 1.0
   private attackIntervalMultiplier = 1.0
   private playerMaxHealthMultiplier = 1.0
-  private terrainLayout: QingShiRidgeTerrainLayout = generateQingShiRidgeLayout(Phaser.Math.Between(1, 9999))
+  private terrainLayout!: QingShiRidgeTerrainLayout
   private readonly discoveredLandmarkIds = new Set<string>()
   private demonLair: DemonLairState = createDemonLairState(WORLD_SIZE)
   private lingquanEvent: LingquanEventState = createLingquanEventState()
@@ -344,14 +349,17 @@ export class QingShiRidgeScene extends Phaser.Scene {
     this.emitInstrumentation = emitInstrumentation
     this.deterministicAcceptance = deterministicAcceptance
     this.practiceMode = practiceMode
-    this.upgradeDraftState = createUpgradeDraftState(runSeed)
-    this.lingquanEvent = createLingquanEventState(this.terrainLayout.spiritNodes.length, runSeed)
+    const sessionSeed = deterministicAcceptance ? DETERMINISTIC_ACCEPTANCE_SEED : runSeed
+    this.terrainLayout = generateQingShiRidgeLayout(sessionSeed)
+    this.upgradeDraftState = createUpgradeDraftState(sessionSeed)
+    this.lingquanEvent = createLingquanEventState(this.terrainLayout.spiritNodes.length, sessionSeed)
   }
 
   preload() {
     this.load.image('qingshi-ground', groundTextureUrl)
     this.load.spritesheet('qingshi-actors', actorAtlasUrl, { frameWidth: 512, frameHeight: 512 })
     this.load.spritesheet('qingshi-combat-actors', combatActorAtlasUrl, { frameWidth: 256, frameHeight: 768 })
+    this.load.image('artifact-icons', artifactIconsAtlasUrl)
   }
 
   create() {
@@ -2287,8 +2295,11 @@ export class QingShiRidgeScene extends Phaser.Scene {
     this.renderCombatBursts()
 
     // Render projectiles according to their 法器视觉签名.
-    for (const projectile of this.projectiles) {
-      this.renderArtifactProjectile(projectile)
+    for (const [index, projectile] of this.projectiles.entries()) {
+      this.renderArtifactProjectile(projectile, index)
+    }
+    for (let index = this.projectiles.length; index < this.artifactProjectileSprites.length; index += 1) {
+      this.artifactProjectileSprites[index]?.setVisible(false)
     }
 
     // Slow mist shots stay bright and outlined so their path remains readable in a dense wave.
@@ -2485,7 +2496,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
     }
   }
 
-  private renderArtifactProjectile(projectile: Projectile) {
+  private renderArtifactProjectile(projectile: Projectile, index: number) {
     const signature = resolveArtifactVisualSignature(projectile.artifactId)
     const velocityLength = Math.hypot(projectile.velocityX, projectile.velocityY) || 1
     const directionX = projectile.velocityX / velocityLength
@@ -2496,6 +2507,27 @@ export class QingShiRidgeScene extends Phaser.Scene {
     const tailX = projectile.x - projectile.velocityX * 0.035 * trailLength
     const tailY = projectile.y - projectile.velocityY * 0.035 * trailLength
     const accent = signature.accentColor
+    const iconIndex = {
+      'qing-feng-jian-xia': 0,
+      'lei-zhuan-fu-ce': 1,
+      'si-xiang-zhen-qi': 2,
+      'fu-yao-yu-yi': 3,
+      'zhu-xie-jian-zhen': 4,
+      'liu-guang-jian-yi': 5,
+      'jiu-xiao-lei-zhen': 6,
+    }[projectile.artifactId]
+    const icon = this.artifactProjectileSprites[index]
+      ?? (this.artifactProjectileSprites[index] = this.add.image(projectile.x, projectile.y, 'artifact-icons'))
+    const iconColumn = iconIndex % 4
+    const iconRow = iconIndex >= 4 ? 1 : 0
+    icon
+      .setCrop(iconColumn * 350, iconRow * 561, 350, 561)
+      .setPosition(projectile.x, projectile.y)
+      .setDisplaySize(signature.isHighTier ? 30 : 24, signature.isHighTier ? 34 : 28)
+      .setRotation(Math.atan2(directionY, directionX) + Math.PI / 2)
+      .setAlpha(this.reducedMotion ? 0.9 : 1)
+      .setDepth(5)
+      .setVisible(true)
 
     if (!this.reducedMotion) {
       this.graphics.lineStyle(signature.trailWidth, accent, 0.9).lineBetween(tailX, tailY, projectile.x, projectile.y)
@@ -2828,6 +2860,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
       radarEnemyRegions: commonEnemyCells.length,
       radarSpiritRegions: spiritCells.length,
       radarLandmarks: landmarks.length,
+      presentationCheckpoint: resolveCombatPresentationCheckpoint(this.progress.elapsedMs)?.id ?? null,
     })
   }
 }

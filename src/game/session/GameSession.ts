@@ -59,6 +59,7 @@ export interface BattleInstrumentationSnapshot {
   readonly radarEnemyRegions: number
   readonly radarSpiritRegions: number
   readonly radarLandmarks: number
+  readonly presentationCheckpoint: string | null
 }
 
 export type GameSessionDecision =
