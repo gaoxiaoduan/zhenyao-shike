@@ -10,6 +10,10 @@
 
 ## Agent skills
 
+### External tooling
+
+- GitHub CLI (`gh`) commands must run outside the sandbox with escalated execution. Do not retry `gh` inside the sandbox.
+
 ### Issue tracker
 
 Issues are tracked in this repository's GitHub Issues. See `docs/agents/issue-tracker.md`.
