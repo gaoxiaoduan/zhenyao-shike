@@ -24,6 +24,7 @@ const screen = shallowRef<Screen>('home')
 const overlay = shallowRef<Overlay>(null)
 const lastResult = shallowRef<RunSummary | null>(null)
 const isNewRecord = shallowRef(false)
+const persistenceStatus = shallowRef<'persisted' | 'session-only'>('persisted')
 const practiceResult = shallowRef(false)
 const showOnboarding = shallowRef(true)
 const practiceMode = shallowRef(false)
@@ -103,7 +104,7 @@ async function finishRun(summary: RunSummary) {
     nextIsNewRecord = record.isNewRecord
     demonCoreEarned = record.demonCoreEarned
     runHistory.value = record.history
-    await runHistoryStorage.flush()
+    persistenceStatus.value = await runHistoryStorage.flush() ? 'persisted' : 'session-only'
   }
   lastResult.value = { ...summary, demonCores: demonCoreEarned ? 1 : 0 }
   isNewRecord.value = nextIsNewRecord
@@ -206,8 +207,11 @@ onUnmounted(() => {
       :summary="lastResult"
       :new-record="isNewRecord"
       :practice-mode="practiceResult"
+      :persistence-status="persistenceStatus"
+      :run-history="runHistory"
       @retry="retryRun"
       @home="returnHome"
+      @open-history="openOverlay('history')"
     />
 
     <RunHistoryPanel

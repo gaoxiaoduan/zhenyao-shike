@@ -41,6 +41,42 @@ async function seedBrowserSave(page: Page, key: string, value: string) {
   await page.reload()
 }
 
+function createHistorySave() {
+  const data = {
+    entries: [{
+      id: 'run-e2e',
+      recordedAtMs: 1_700_000_000_000,
+      result: 'victory',
+      elapsedMs: 180_000,
+      defeatedEnemies: 55,
+      defeatedElites: 2,
+      bossElapsedMs: 42_000,
+      completedEvents: ['demon-lair', 'lingquan'],
+      artifacts: [{ id: 'qing-feng-jian-xia', name: '青锋剑匣', level: 5 }],
+      finalDamageSource: 'unknown',
+    }],
+    best: {
+      fastestVictoryMs: 180_000,
+      mostKills: 55,
+      longestSurvivalMs: 180_000,
+    },
+    firstVictoryRecorded: true,
+  }
+  const serialized = JSON.stringify(data)
+  let checksum = 2_166_136_261
+  for (let index = 0; index < serialized.length; index += 1) {
+    checksum ^= serialized.charCodeAt(index)
+    checksum = Math.imul(checksum, 16_777_619)
+  }
+  return JSON.stringify({
+    schemaVersion: 3,
+    gameVersion: '0.1.0',
+    writtenAtMs: 1_700_000_000_000,
+    checksum: (checksum >>> 0).toString(16),
+    data,
+  })
+}
+
 test('opens the polished cave hub and persists audio settings', async ({ page }) => {
   await page.goto('/')
 
@@ -55,27 +91,7 @@ test('opens the polished cave hub and persists audio settings', async ({ page })
 })
 
 test('opens saved personal 历练记录 from the cave hub', async ({ page }) => {
-  await seedBrowserSave(page, 'zhenyao-shike.run-history.v2', JSON.stringify({
-    version: 2,
-    best: {
-      fastestVictoryMs: 180_000,
-      mostKills: 55,
-      longestSurvivalMs: 180_000,
-    },
-    firstVictoryRecorded: true,
-    entries: [{
-      id: 'run-e2e',
-      recordedAtMs: 1_700_000_000_000,
-      result: 'victory',
-      elapsedMs: 180_000,
-      defeatedEnemies: 55,
-      defeatedElites: 2,
-      bossElapsedMs: 42_000,
-      completedEvents: ['demon-lair', 'lingquan'],
-      artifacts: [{ id: 'qing-feng-jian-xia', name: '青锋剑匣', level: 5 }],
-      finalDamageSource: 'unknown',
-    }],
-  }))
+  await seedBrowserSave(page, 'zhenyao-shike.run-history.v3', createHistorySave())
   await page.getByRole('button', { name: '打开历练记录' }).click()
 
   await expect(page.getByRole('dialog', { name: '历练记录' })).toContainText('最快胜场')

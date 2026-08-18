@@ -6,9 +6,11 @@ import type {
   RunSummary,
 } from './runSummary'
 
-export const RUN_HISTORY_STORAGE_KEY = 'zhenyao-shike.run-history.v2'
+export const RUN_HISTORY_STORAGE_KEY = 'zhenyao-shike.run-history.v3'
 export const BOSS_PRACTICE_STORAGE_KEY = 'zhenyao-shike.boss-practice.v1'
 export const MAX_RUN_HISTORY_ENTRIES = 12
+const RUN_HISTORY_SCHEMA_VERSION = 3
+const RUN_HISTORY_GAME_VERSION = '0.1.0'
 
 export interface RunRecordStorage {
   getItem(key: string): string | null
@@ -52,7 +54,14 @@ export interface RunRecordUpdate {
 }
 
 interface StoredRunHistory {
-  readonly version: 2
+  readonly schemaVersion: 3
+  readonly gameVersion: string
+  readonly writtenAtMs: number
+  readonly checksum: string
+  readonly data: StoredRunHistoryData
+}
+
+interface StoredRunHistoryData {
   readonly entries: readonly unknown[]
   readonly best: RunHistoryBest
   readonly firstVictoryRecorded: boolean
@@ -93,18 +102,18 @@ function readStoredRunHistory(storage: Pick<RunRecordStorage, 'getItem'>): Store
   }
 
   try {
-    const parsed: unknown = JSON.parse(raw)
-    if (!isStoredRunHistory(parsed)) {
+    const parsed = parseStoredRunHistory(raw)
+    if (!parsed) {
       return { history: createEmptyRunHistory(), firstVictoryRecorded: false }
     }
 
-    const entries = parsed.entries.filter(isRunHistoryEntry)
-    if (entries.length !== parsed.entries.length) {
+    const entries = parsed.data.entries.filter(isRunHistoryEntry)
+    if (entries.length !== parsed.data.entries.length) {
       return { history: createEmptyRunHistory(), firstVictoryRecorded: false }
     }
     return {
-      history: createHistorySnapshot(entries, parsed.best),
-      firstVictoryRecorded: parsed.firstVictoryRecorded,
+      history: createHistorySnapshot(entries, parsed.data.best),
+      firstVictoryRecorded: parsed.data.firstVictoryRecorded,
     }
   } catch {
     return { history: createEmptyRunHistory(), firstVictoryRecorded: false }
@@ -121,12 +130,10 @@ export function recordRunResult(
   const entries = [entry, ...current.history.entries].slice(0, MAX_RUN_HISTORY_ENTRIES)
   const history = createHistorySnapshot(entries, mergeBest(current.history.best, entry))
   const firstVictoryRecorded = current.firstVictoryRecorded || summary.result === 'victory'
-  storage.setItem(RUN_HISTORY_STORAGE_KEY, JSON.stringify({
-    version: 2,
-    entries,
-    best: history.best,
-    firstVictoryRecorded,
-  }))
+  storage.setItem(
+    RUN_HISTORY_STORAGE_KEY,
+    JSON.stringify(createStoredRunHistory(entries, history.best, firstVictoryRecorded, recordedAtMs)),
+  )
 
   return {
     isNewRecord: isNewPersonalRecord(summary, current.history),
@@ -193,11 +200,62 @@ function isNewPersonalRecord(summary: RunSummary, current: RunHistorySnapshot): 
 }
 
 function isStoredRunHistory(value: unknown): value is StoredRunHistory {
-  return isRecord(value)
-    && value.version === 2
-    && Array.isArray(value.entries)
-    && isRunHistoryBest(value.best)
-    && typeof value.firstVictoryRecorded === 'boolean'
+  if (!isRecord(value)
+    || value.schemaVersion !== RUN_HISTORY_SCHEMA_VERSION
+    || value.gameVersion !== RUN_HISTORY_GAME_VERSION
+    || !isFiniteNumber(value.writtenAtMs)
+    || typeof value.checksum !== 'string'
+    || !isRecord(value.data)
+    || !Array.isArray(value.data.entries)
+    || !value.data.entries.every(isRunHistoryEntry)
+    || !isRunHistoryBest(value.data.best)
+    || typeof value.data.firstVictoryRecorded !== 'boolean') {
+    return false
+  }
+
+  return value.checksum === calculateChecksum(JSON.stringify(value.data))
+}
+
+function parseStoredRunHistory(raw: string): StoredRunHistory | null {
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return isStoredRunHistory(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+export function isValidRunHistoryStorageValue(raw: string): boolean {
+  return parseStoredRunHistory(raw) !== null
+}
+
+function createStoredRunHistory(
+  entries: readonly RunHistoryEntry[],
+  best: RunHistoryBest,
+  firstVictoryRecorded: boolean,
+  writtenAtMs: number,
+): StoredRunHistory {
+  const data: StoredRunHistoryData = {
+    entries,
+    best,
+    firstVictoryRecorded,
+  }
+  return {
+    schemaVersion: RUN_HISTORY_SCHEMA_VERSION,
+    gameVersion: RUN_HISTORY_GAME_VERSION,
+    writtenAtMs,
+    checksum: calculateChecksum(JSON.stringify(data)),
+    data,
+  }
+}
+
+function calculateChecksum(value: string): string {
+  let hash = 2_166_136_261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16_777_619)
+  }
+  return (hash >>> 0).toString(16)
 }
 
 function isRunHistoryBest(value: unknown): value is RunHistoryBest {

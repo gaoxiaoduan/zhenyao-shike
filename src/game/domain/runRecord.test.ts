@@ -3,6 +3,7 @@ import type { RunSummary } from './runSummary'
 import {
   createEmptyRunHistory,
   hasBossPracticeUnlocked,
+  isValidRunHistoryStorageValue,
   readRunHistory,
   recordRunResult,
   RUN_HISTORY_STORAGE_KEY,
@@ -20,7 +21,6 @@ function createSummary(overrides: Partial<RunSummary> = {}): RunSummary {
     artifacts: [{ id: 'qing-feng-jian-xia', name: '青锋剑匣', level: 4 }],
     spiritStones: 10,
     demonCores: 0,
-    demonLairDestroyed: false,
     finalDamageSource: 'ordinary-enemy',
     hint: '保持移动。',
     ...overrides,
@@ -109,6 +109,19 @@ describe('run record', () => {
 
     expect(readRunHistory(storage)).toEqual(createEmptyRunHistory())
     storage.setItem(RUN_HISTORY_STORAGE_KEY, '{"version":2,"entries":[null]}')
+    expect(readRunHistory(storage)).toEqual(createEmptyRunHistory())
+  })
+
+  it('detects a tampered history payload through its checksum', () => {
+    const storage = createStorage()
+    recordRunResult(storage, createSummary(), 1_700_000_000_000)
+    const raw = storage.getItem(RUN_HISTORY_STORAGE_KEY)
+
+    expect(raw).not.toBeNull()
+    expect(isValidRunHistoryStorageValue(raw!)).toBe(true)
+    storage.setItem(RUN_HISTORY_STORAGE_KEY, raw!.replace('"mostKills":42', '"mostKills":0'))
+
+    expect(isValidRunHistoryStorageValue(storage.getItem(RUN_HISTORY_STORAGE_KEY)!)).toBe(false)
     expect(readRunHistory(storage)).toEqual(createEmptyRunHistory())
   })
 

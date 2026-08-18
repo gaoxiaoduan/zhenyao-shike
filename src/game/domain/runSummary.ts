@@ -37,7 +37,6 @@ export interface RunSummary {
   readonly artifacts: readonly RunArtifactSummary[]
   readonly spiritStones: number
   readonly demonCores: number
-  readonly demonLairDestroyed: boolean
   readonly finalDamageSource: DamageSource
   readonly hint: string
 }
@@ -52,7 +51,6 @@ const DAMAGE_HINTS: Record<DamageSource, string> = {
 
 export function createRunSummary(input: RunSummaryInput): RunSummary {
   const completedEvents = [...new Set(input.completedEvents)]
-  const demonLairDestroyed = completedEvents.includes('demon-lair')
   return {
     result: input.result,
     elapsedMs: input.elapsedMs,
@@ -61,10 +59,11 @@ export function createRunSummary(input: RunSummaryInput): RunSummary {
     bossElapsedMs: input.bossElapsedMs,
     completedEvents,
     artifacts: input.artifacts,
-    spiritStones: input.practiceMode ? 0 : input.defeatedElites * 2 + (demonLairDestroyed ? 8 : 0),
+    spiritStones: input.practiceMode
+      ? 0
+      : input.defeatedElites * 2 + (completedEvents.includes('demon-lair') ? 8 : 0),
     // Only the product shell knows whether this is the first victory for the current node.
     demonCores: 0,
-    demonLairDestroyed,
     finalDamageSource: input.finalDamageSource,
     hint:
       input.result === 'victory'

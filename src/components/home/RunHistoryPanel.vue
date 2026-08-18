@@ -89,6 +89,7 @@ function close() {
             <div class="run-history-entry__stats">
               <span>历练 {{ formatTime(entry.elapsedMs) }}</span>
               <span>斩妖 {{ entry.defeatedEnemies }}</span>
+              <span>精英 {{ entry.defeatedElites }}</span>
               <span v-if="entry.bossElapsedMs !== null">妖王战 {{ formatTime(entry.bossElapsedMs) }}</span>
             </div>
             <p class="run-history-entry__build">构筑：{{ buildLabel(entry) }}</p>

@@ -47,6 +47,7 @@ describe('computeBattleViewport', () => {
 
   it('requires landscape only for a portrait mobile viewport', () => {
     expect(computeBattleViewport({ width: 430, height: 932, desktop: false })).toMatchObject({
+      compact: true,
       requiresOrientation: true,
       requiresLargerWindow: false,
     })

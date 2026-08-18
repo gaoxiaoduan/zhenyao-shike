@@ -22,7 +22,6 @@ describe('createRunSummary', () => {
       artifacts: [{ id: 'qing-feng-jian-xia', name: '青锋剑匣', level: 4 }],
       spiritStones: 10,
       demonCores: 0,
-      demonLairDestroyed: true,
       finalDamageSource: 'ordinary-enemy',
       hint: '妖群贴身造成了最后一击；保持移动，并优先补足范围压制。',
     })

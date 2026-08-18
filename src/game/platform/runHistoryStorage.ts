@@ -1,5 +1,6 @@
 import {
   BOSS_PRACTICE_STORAGE_KEY,
+  isValidRunHistoryStorageValue,
   RUN_HISTORY_STORAGE_KEY,
   type RunRecordStorage,
 } from '../domain/runRecord'
@@ -10,15 +11,20 @@ export const RUN_HISTORY_STORE_NAME = 'records'
 
 export interface BrowserRunHistoryStorage extends RunRecordStorage {
   readonly ready: Promise<void>
-  flush(): Promise<void>
+  flush(): Promise<boolean>
 }
 
 const BACKUP_KEY_SUFFIX = ':backup'
 
+interface StoredRecordPair {
+  readonly current: string | null
+  readonly backup: string | null
+}
+
 export function createBrowserRunHistoryStorage(): BrowserRunHistoryStorage {
   const memoryValues = new Map<string, string>()
   let database: IDBDatabase | null = null
-  let pendingWrite = Promise.resolve()
+  let pendingWrite: Promise<boolean> = Promise.resolve(true)
 
   const ready = hydrate()
 
@@ -32,11 +38,9 @@ export function createBrowserRunHistoryStorage(): BrowserRunHistoryStorage {
       pendingWrite = pendingWrite
         .then(async () => {
           await ready
-          if (database) {
-            await writeRecord(database, key, value)
-          }
+          return database ? writeRecord(database, key, value) : false
         })
-        .catch(() => undefined)
+        .catch(() => false)
     },
     flush() {
       return pendingWrite
@@ -51,9 +55,19 @@ export function createBrowserRunHistoryStorage(): BrowserRunHistoryStorage {
     try {
       database = await openDatabase()
       for (const key of [RUN_HISTORY_STORAGE_KEY, BOSS_PRACTICE_STORAGE_KEY]) {
-        const value = await readRecord(database, key)
+        const pair = await readRecordPair(database, key)
+        const currentIsValid = isValidStoredRecord(key, pair.current)
+        const backupIsValid = isValidStoredRecord(key, pair.backup)
+        const value = currentIsValid
+          ? pair.current
+          : backupIsValid
+            ? pair.backup
+            : pair.current ?? pair.backup
         if (value !== null) {
           memoryValues.set(key, value)
+        }
+        if (!currentIsValid && backupIsValid && pair.backup !== null) {
+          await restoreRecord(database, key, pair.backup)
         }
       }
     } catch {
@@ -76,26 +90,50 @@ function openDatabase(): Promise<IDBDatabase> {
   })
 }
 
-function readRecord(database: IDBDatabase, key: string): Promise<string | null> {
+function isValidStoredRecord(key: string, value: string | null): boolean {
+  if (value === null) {
+    return false
+  }
+  return key === RUN_HISTORY_STORAGE_KEY ? isValidRunHistoryStorageValue(value) : value === 'unlocked'
+}
+
+function readRecordPair(database: IDBDatabase, key: string): Promise<StoredRecordPair> {
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(RUN_HISTORY_STORE_NAME, 'readonly')
     const store = transaction.objectStore(RUN_HISTORY_STORE_NAME)
     const request = store.get(key)
-    request.onsuccess = () => {
-      if (typeof request.result === 'string') {
-        resolve(request.result)
-        return
+    const backupRequest = store.get(`${key}${BACKUP_KEY_SUFFIX}`)
+    let current: string | null | undefined
+    let backup: string | null | undefined
+    const finish = () => {
+      if (current !== undefined && backup !== undefined) {
+        resolve({ current, backup })
       }
-      const backupRequest = store.get(`${key}${BACKUP_KEY_SUFFIX}`)
-      backupRequest.onsuccess = () => resolve(typeof backupRequest.result === 'string' ? backupRequest.result : null)
-      backupRequest.onerror = () => reject(backupRequest.error ?? new Error('Unable to read backup save'))
+    }
+    request.onsuccess = () => {
+      current = typeof request.result === 'string' ? request.result : null
+      finish()
+    }
+    backupRequest.onsuccess = () => {
+      backup = typeof backupRequest.result === 'string' ? backupRequest.result : null
+      finish()
     }
     request.onerror = () => reject(request.error ?? new Error('Unable to read local save'))
+    backupRequest.onerror = () => reject(backupRequest.error ?? new Error('Unable to read backup save'))
     transaction.onerror = () => reject(transaction.error ?? new Error('Unable to read local save transaction'))
   })
 }
 
-function writeRecord(database: IDBDatabase, key: string, value: string): Promise<void> {
+function restoreRecord(database: IDBDatabase, key: string, value: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(RUN_HISTORY_STORE_NAME, 'readwrite')
+    transaction.objectStore(RUN_HISTORY_STORE_NAME).put(value, key)
+    transaction.oncomplete = () => resolve()
+    transaction.onerror = () => reject(transaction.error ?? new Error('Unable to write local save transaction'))
+  })
+}
+
+function writeRecord(database: IDBDatabase, key: string, value: string): Promise<boolean> {
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(RUN_HISTORY_STORE_NAME, 'readwrite')
     const store = transaction.objectStore(RUN_HISTORY_STORE_NAME)
@@ -107,7 +145,7 @@ function writeRecord(database: IDBDatabase, key: string, value: string): Promise
       store.put(value, key)
     }
     currentRequest.onerror = () => reject(currentRequest.error ?? new Error('Unable to prepare local save'))
-    transaction.oncomplete = () => resolve()
+    transaction.oncomplete = () => resolve(true)
     transaction.onerror = () => reject(transaction.error ?? new Error('Unable to write local save transaction'))
   })
 }

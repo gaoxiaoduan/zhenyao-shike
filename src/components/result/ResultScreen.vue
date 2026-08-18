@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import caveBackgroundUrl from '../../assets/game/qingshi-cave-home.png'
+import type { RunHistorySnapshot } from '../../game/domain/runRecord'
 import type { DamageSource, RunSummary } from '../../game/domain/runSummary'
 import ArtifactIcon from '../game/ArtifactIcon.vue'
 
@@ -7,13 +8,17 @@ const props = withDefaults(defineProps<{
   summary: RunSummary
   newRecord: boolean
   practiceMode?: boolean
+  persistenceStatus?: 'persisted' | 'session-only'
+  runHistory?: RunHistorySnapshot
 }>(), {
   practiceMode: false,
+  persistenceStatus: 'persisted',
 })
 
 const emit = defineEmits<{
   retry: []
   home: []
+  openHistory: []
 }>()
 
 const damageLabels: Readonly<Record<DamageSource, string>> = {
@@ -54,7 +59,9 @@ function formatTime(elapsedMs: number) {
           <span v-else>
             {{ props.summary.result === 'victory' ? '啸月狼王已伏，山道暂得安宁。' : damageLabels[props.summary.finalDamageSource] }}
           </span>
-          <small v-if="!props.practiceMode" class="result-record-note">本局已写入历练记录</small>
+          <small v-if="!props.practiceMode" class="result-record-note">
+            {{ props.persistenceStatus === 'persisted' ? '本局已写入历练记录' : '本局记录仅保留在当前会话' }}
+          </small>
         </div>
         <div class="result-seal" aria-hidden="true">{{ props.summary.result === 'victory' ? '胜' : '败' }}</div>
       </header>
@@ -62,6 +69,7 @@ function formatTime(elapsedMs: number) {
       <div class="result-stats" aria-label="历练数据">
         <div><small>坚持时间</small><strong>{{ formatTime(props.summary.elapsedMs) }}</strong></div>
         <div><small>斩妖数</small><strong>{{ props.summary.defeatedEnemies }}</strong></div>
+        <div><small>精英斩妖</small><strong>{{ props.summary.defeatedElites }}</strong></div>
         <div v-if="props.summary.bossElapsedMs !== null"><small>妖王战</small><strong>{{ formatTime(props.summary.bossElapsedMs) }}</strong></div>
         <div><small>灵石</small><strong>+{{ props.summary.spiritStones }}</strong></div>
         <div><small>妖丹</small><strong>+{{ props.summary.demonCores }}</strong></div>
@@ -81,10 +89,10 @@ function formatTime(elapsedMs: number) {
         <p v-else class="result-build__empty">尚未形成法器构筑。</p>
       </section>
 
-      <div class="result-event" :class="{ 'is-complete': props.summary.demonLairDestroyed }">
+      <div class="result-event" :class="{ 'is-complete': props.summary.completedEvents.includes('demon-lair') }">
         <span>战场事件 · 妖巢暴动</span>
         <strong>
-          {{ props.summary.demonLairDestroyed ? '妖巢暴动已完成' : '妖巢暴动未完成' }}
+          {{ props.summary.completedEvents.includes('demon-lair') ? '妖巢暴动已完成' : '妖巢暴动未完成' }}
           <template v-if="props.summary.completedEvents.includes('lingquan')"> · {{ eventLabels.lingquan }}已完成</template>
         </strong>
       </div>
@@ -96,6 +104,7 @@ function formatTime(elapsedMs: number) {
 
       <footer class="result-actions">
         <button class="game-button" type="button" aria-label="再次进入青石岭" @click="emit('retry')">再次历练</button>
+        <button v-if="!props.practiceMode && props.runHistory" class="game-button game-button--quiet" type="button" aria-label="查看历练记录" @click="emit('openHistory')">历练记录</button>
         <button class="game-button game-button--quiet" type="button" @click="emit('home')">返回洞府</button>
       </footer>
     </article>
@@ -214,7 +223,7 @@ function formatTime(elapsedMs: number) {
 
 .result-stats {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   margin-top: 1.6rem;
   border-block: 1px solid rgb(245 216 138 / 0.18);
 }

@@ -490,7 +490,6 @@ describe('一局会话 external seam', () => {
       artifacts: [],
       spiritStones: 0,
       demonCores: 0,
-      demonLairDestroyed: false,
       finalDamageSource: 'unknown' as const,
       hint: '此行未竟；调整法器构筑，再从妖潮中寻找破局节奏。',
     }

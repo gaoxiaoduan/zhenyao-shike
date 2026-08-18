@@ -40,7 +40,7 @@ export function computeBattleViewport(input: BattleViewportInput): BattleViewpor
     aspectRatio,
     internalWidth: Math.round(BATTLE_DESIGN_HEIGHT * aspectRatio),
     internalHeight: BATTLE_DESIGN_HEIGHT,
-    compact: Boolean(input.compact),
+    compact: Boolean(input.compact || !input.desktop),
     requiresOrientation: !input.desktop && input.height > input.width,
     requiresLargerWindow:
       input.desktop
