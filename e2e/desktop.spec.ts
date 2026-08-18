@@ -149,6 +149,7 @@ test('unlocked 妖王演练 enters the boss directly without the mainline onboar
   await expect(page.getByLabel('战斗信息')).toContainText('啸月狼王')
   await expect(page.getByLabel('战斗信息')).toContainText('30000')
   await expect(page.getByText('请先完成新手引导')).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: '战场事件说明' })).toHaveCount(0)
 })
 
 test('selects cards with number keys and exposes the full-world battle radar', async ({ page }) => {

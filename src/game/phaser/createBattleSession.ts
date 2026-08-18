@@ -1,7 +1,8 @@
 import * as Phaser from 'phaser'
 import actorAtlasUrl from '../../assets/game/qingshi-actors.png'
 import combatActorAtlasUrl from '../../assets/game/qingshi-combat-actors.png'
-import commonActorAtlasUrl from '../../assets/game/qingshi-common-actors.png'
+import commonActorAtlasLeftUrl from '../../assets/game/qingshi-common-actors-left.png'
+import commonActorAtlasRightUrl from '../../assets/game/qingshi-common-actors-right.png'
 import artifactCombatEffectsAtlasUrl from '../../assets/game/artifact-combat-effects.png'
 import groundTextureUrl from '../../assets/game/qingshi-ground.png'
 import { musicStageForRun, type MusicStage, type SoundCue } from '../audio/audioDirector'
@@ -131,6 +132,14 @@ const HUD_INTERVAL_MS = 120
 const SPELL_COOLDOWN_MS = 10_000
 const SPELL_SHIELD_DURATION_MS = 1_500
 const RESULT_FREEZE_MS = 600
+const COMMON_ACTOR_ATLAS_FRAME_COUNT = 20
+
+function resolveCommonActorAtlas(frame: number) {
+  const normalizedFrame = Math.max(0, Math.floor(frame))
+  return normalizedFrame < COMMON_ACTOR_ATLAS_FRAME_COUNT
+    ? { textureKey: 'qingshi-common-actors-left', frame: normalizedFrame }
+    : { textureKey: 'qingshi-common-actors-right', frame: normalizedFrame - COMMON_ACTOR_ATLAS_FRAME_COUNT }
+}
 
 const ABANDONED_VILLAGE = { x: 1160, y: 1040, width: 290, height: 190 } as const
 
@@ -369,7 +378,9 @@ export class QingShiRidgeScene extends Phaser.Scene {
   preload() {
     this.load.image('qingshi-ground', groundTextureUrl)
     this.load.spritesheet('qingshi-actors', actorAtlasUrl, { frameWidth: 512, frameHeight: 512 })
-    this.load.spritesheet('qingshi-common-actors', commonActorAtlasUrl, { frameWidth: 256, frameHeight: 256 })
+    // Keep each WebGL texture below the common 8192px maximum texture width.
+    this.load.spritesheet('qingshi-common-actors-left', commonActorAtlasLeftUrl, { frameWidth: 256, frameHeight: 256 })
+    this.load.spritesheet('qingshi-common-actors-right', commonActorAtlasRightUrl, { frameWidth: 256, frameHeight: 256 })
     this.load.spritesheet('qingshi-combat-actors', combatActorAtlasUrl, { frameWidth: 256, frameHeight: 768 })
     this.load.spritesheet('artifact-combat-effects', artifactCombatEffectsAtlasUrl, { frameWidth: 128, frameHeight: 128 })
   }
@@ -426,8 +437,10 @@ export class QingShiRidgeScene extends Phaser.Scene {
     const previousPhase = this.progress.phase
     this.progress = advanceRunProgress(this.progress, stepMs * this.elapsedTimeScale)
     this.syncMusicStage()
-    this.demonLair = updateDemonLairTrigger(this.demonLair, this.progress.elapsedMs)
-    this.lingquanEvent = updateLingquanTrigger(this.lingquanEvent, this.progress.elapsedMs)
+    if (!this.practiceMode) {
+      this.demonLair = updateDemonLairTrigger(this.demonLair, this.progress.elapsedMs)
+      this.lingquanEvent = updateLingquanTrigger(this.lingquanEvent, this.progress.elapsedMs)
+    }
     if (previousPhase === 'growth' && this.progress.phase === 'boss') {
       this.startBossEncounter()
     }
@@ -1107,6 +1120,10 @@ export class QingShiRidgeScene extends Phaser.Scene {
   }
 
   private advanceBattlefieldEvents(stepMs: number) {
+    if (this.practiceMode) {
+      return
+    }
+
     if (this.demonLair.phase === 'travel' && !this.seenBattlefieldEvents.has('demon-lair')) {
       this.seenBattlefieldEvents.add('demon-lair')
       const copy = BATTLEFIELD_EVENT_COPY['demon-lair']
@@ -2011,8 +2028,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
   }
 
   private createEnemySprite(id: string, x: number, y: number, radius: number) {
-    const textureKey = id === 'xiaoyue-wolf-king-moon-shadow' ? 'qingshi-combat-actors' : 'qingshi-common-actors'
-    const frame = textureKey === 'qingshi-combat-actors'
+    const frame = id === 'xiaoyue-wolf-king-moon-shadow'
       ? 0
       : id === 'qing-shi-ridge-boar-demon'
         ? 0
@@ -2021,11 +2037,14 @@ export class QingShiRidgeScene extends Phaser.Scene {
           : id === 'qing-shi-ridge-elite-wolf'
             ? 30
             : 10
-    const sprite = this.enemySpritePool.pop() ?? this.add.image(x, y, textureKey, frame)
+    const texture = id === 'xiaoyue-wolf-king-moon-shadow'
+      ? { textureKey: 'qingshi-combat-actors', frame }
+      : resolveCommonActorAtlas(frame)
+    const sprite = this.enemySpritePool.pop() ?? this.add.image(x, y, texture.textureKey, texture.frame)
     return sprite
       .setActive(true)
       .setVisible(true)
-      .setTexture(textureKey, frame)
+      .setTexture(texture.textureKey, texture.frame)
       .setPosition(x, y)
       .setDisplaySize(radius * 4.8, radius * 4.8)
       .setAlpha(1)
@@ -2066,37 +2085,39 @@ export class QingShiRidgeScene extends Phaser.Scene {
       ? null
       : Math.round(Math.min(...elites.map((enemy) => enemy.health / enemy.maxHealth)) * 100)
 
-    const battlefieldEvent = this.demonLair.phase !== 'dormant'
-      && this.demonLair.phase !== 'expired'
-      && this.demonLair.phase !== 'completed'
-      ? {
-          kind: 'demon-lair' as const,
-          phase: this.demonLair.phase,
-          name: BATTLEFIELD_EVENT_COPY['demon-lair'].name,
-          objective: this.demonLair.phase === 'travel'
-            ? BATTLEFIELD_EVENT_COPY['demon-lair'].objectives.travel
-            : BATTLEFIELD_EVENT_COPY['demon-lair'].objectives.active,
-          remainingMs: this.demonLair.phase === 'travel'
-            ? this.demonLair.travelRemainingMs
-            : this.demonLair.battleRemainingMs,
-          progress: this.demonLair.destroyed ? 1 : 1 - this.demonLair.health / this.demonLair.maxHealth,
-          reward: BATTLEFIELD_EVENT_COPY['demon-lair'].reward,
-        }
-      : this.lingquanEvent.phase !== 'dormant'
-        && this.lingquanEvent.phase !== 'expired'
-        && this.lingquanEvent.phase !== 'completed'
+    const battlefieldEvent = this.practiceMode
+      ? undefined
+      : this.demonLair.phase !== 'dormant'
+        && this.demonLair.phase !== 'expired'
+        && this.demonLair.phase !== 'completed'
         ? {
-            kind: 'lingquan' as const,
-            phase: this.lingquanEvent.phase,
-            name: BATTLEFIELD_EVENT_COPY.lingquan.name,
-            objective: this.lingquanEvent.phase === 'available'
-              ? BATTLEFIELD_EVENT_COPY.lingquan.objectives.travel
-              : BATTLEFIELD_EVENT_COPY.lingquan.objectives.active,
-            remainingMs: this.lingquanEvent.travelRemainingMs,
-            progress: this.lingquanEvent.guideProgressMs / this.lingquanEvent.guideDurationMs,
-            reward: BATTLEFIELD_EVENT_COPY.lingquan.reward,
+            kind: 'demon-lair' as const,
+            phase: this.demonLair.phase,
+            name: BATTLEFIELD_EVENT_COPY['demon-lair'].name,
+            objective: this.demonLair.phase === 'travel'
+              ? BATTLEFIELD_EVENT_COPY['demon-lair'].objectives.travel
+              : BATTLEFIELD_EVENT_COPY['demon-lair'].objectives.active,
+            remainingMs: this.demonLair.phase === 'travel'
+              ? this.demonLair.travelRemainingMs
+              : this.demonLair.battleRemainingMs,
+            progress: this.demonLair.destroyed ? 1 : 1 - this.demonLair.health / this.demonLair.maxHealth,
+            reward: BATTLEFIELD_EVENT_COPY['demon-lair'].reward,
           }
-        : undefined
+        : this.lingquanEvent.phase !== 'dormant'
+          && this.lingquanEvent.phase !== 'expired'
+          && this.lingquanEvent.phase !== 'completed'
+          ? {
+              kind: 'lingquan' as const,
+              phase: this.lingquanEvent.phase,
+              name: BATTLEFIELD_EVENT_COPY.lingquan.name,
+              objective: this.lingquanEvent.phase === 'available'
+                ? BATTLEFIELD_EVENT_COPY.lingquan.objectives.travel
+                : BATTLEFIELD_EVENT_COPY.lingquan.objectives.active,
+              remainingMs: this.lingquanEvent.travelRemainingMs,
+              progress: this.lingquanEvent.guideProgressMs / this.lingquanEvent.guideDurationMs,
+              reward: BATTLEFIELD_EVENT_COPY.lingquan.reward,
+            }
+          : undefined
 
     this.reportRuntimeOutput({
       type: 'hud-updated',
@@ -2642,8 +2663,11 @@ export class QingShiRidgeScene extends Phaser.Scene {
       reducedMotion: this.reducedMotion,
       attackVisualRemainingMs: enemy.attackVisualRemainingMs,
     })
+    const texture = presentation.textureKey === 'qingshi-common-actors'
+      ? resolveCommonActorAtlas(presentation.frame)
+      : { textureKey: presentation.textureKey, frame: presentation.frame }
     enemy.sprite
-      .setTexture(presentation.textureKey, presentation.frame)
+      .setTexture(texture.textureKey, texture.frame)
       .setPosition(enemy.x, enemy.y - presentation.bob)
       .setFlipX(presentation.flipX)
       .setAngle(presentation.angle)
