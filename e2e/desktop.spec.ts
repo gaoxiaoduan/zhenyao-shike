@@ -1,4 +1,20 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
+
+async function waitForPresentationCheckpoint(
+  page: Page,
+  battlefield: Locator,
+  checkpoint: string,
+  timeout = 20_000,
+) {
+  await expect.poll(
+    async () => {
+      await page.keyboard.press('1')
+      await page.keyboard.press('Space')
+      return battlefield.getAttribute('data-presentation-checkpoint')
+    },
+    { timeout, intervals: [250] },
+  ).toBe(checkpoint)
+}
 
 test('opens the polished cave hub and persists audio settings', async ({ page }) => {
   await page.goto('/')
@@ -74,6 +90,11 @@ test('selects cards with number keys and exposes the full-world battle radar', a
     async () => Number(await eliteHealth.getAttribute('aria-valuenow')),
     { timeout: 10_000 },
   ).toBeLessThan(initialEliteHealth)
+  await page.keyboard.down('w')
+  await waitForPresentationCheckpoint(page, battlefield, 'surge-02-00')
+  await waitForPresentationCheckpoint(page, battlefield, 'event-04-00')
+  await waitForPresentationCheckpoint(page, battlefield, 'boss-08-30')
+  await page.keyboard.up('w')
 })
 
 test('uses the 21:9 stage and information wings on ultrawide desktop', async ({ page }) => {

@@ -1990,10 +1990,10 @@ export class QingShiRidgeScene extends Phaser.Scene {
       : id === 'qing-shi-ridge-boar-demon'
         ? 0
         : id === 'qing-shi-ridge-mist-moth'
-          ? 12
+          ? 20
           : id === 'qing-shi-ridge-elite-wolf'
-            ? 18
-            : 6
+            ? 30
+            : 10
     const sprite = this.enemySpritePool.pop() ?? this.add.image(x, y, textureKey, frame)
     return sprite
       .setActive(true)

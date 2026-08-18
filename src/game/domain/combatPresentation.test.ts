@@ -30,7 +30,7 @@ describe('semantic combat presentation', () => {
     expect(presentation.telegraph).toBe('charge-lane')
     expect(presentation.silhouette).toBe('boar-demon')
     expect(presentation.textureKey).toBe('qingshi-common-actors')
-    expect(presentation.frame).toBe(2)
+    expect(presentation.frame).toBe(4)
     expect(presentation.scale).toBeLessThan(1)
 
     const walkingFrame = resolveEnemyPresentation({
@@ -68,10 +68,10 @@ describe('semantic combat presentation', () => {
     expect(presentation.accentColor).toBe(0xfbbf24)
     expect(presentation.flipX).toBe(true)
     expect(presentation.textureKey).toBe('qingshi-common-actors')
-    expect(presentation.frame).toBe(23)
+    expect(presentation.frame).toBe(39)
   })
 
-  it('cycles an elite pounce through six readable pixel poses', () => {
+  it('cycles an elite pounce through ten readable pixel poses', () => {
     const first = resolveEnemyPresentation({
       id: 'qing-shi-ridge-elite-wolf',
       isElite: true,
@@ -93,12 +93,12 @@ describe('semantic combat presentation', () => {
       recoveryIsVulnerable: false,
       hitFlashMs: 0,
       facingX: 1,
-      elapsedMs: 600,
+      elapsedMs: 1_080,
       reducedMotion: false,
     })
 
-    expect(first.frame).toBe(18)
-    expect(last.frame).toBe(23)
+    expect(first.frame).toBe(30)
+    expect(last.frame).toBe(39)
   })
 
   it('keeps moon shadows visually separate from ordinary wood wolves', () => {

@@ -58,9 +58,9 @@ const ENEMY_SILHOUETTES: Readonly<Record<EnemyVisualSilhouette, {
 
 const COMMON_ACTOR_FRAME_START: Readonly<Record<Exclude<EnemyVisualSilhouette, 'moon-shadow'>, number>> = {
   'boar-demon': 0,
-  'wood-wolf': 6,
-  'mist-moth': 12,
-  'elite-wolf': 18,
+  'wood-wolf': 10,
+  'mist-moth': 20,
+  'elite-wolf': 30,
 }
 
 function commonActorPoseFrame(
@@ -71,18 +71,18 @@ function commonActorPoseFrame(
 ) {
   const animationStep = reducedMotion ? 0 : Math.floor(Math.max(0, elapsedMs) / 120)
   if (silhouette === 'elite-wolf' && pose === 'attack') {
-    return animationStep % 6
+    return animationStep % 10
   }
   if (pose === 'approach') {
-    return animationStep % 2
+    return animationStep % 4
   }
   if (pose === 'windup') {
-    return 2
+    return 4 + animationStep % 2
   }
   if (pose === 'attack') {
-    return 3 + animationStep % 2
+    return 6 + animationStep % 2
   }
-  return 5
+  return 8 + animationStep % 2
 }
 
 function enemySilhouette(input: EnemyPresentationInput): EnemyVisualSilhouette {
