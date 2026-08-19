@@ -18,6 +18,7 @@ export type ReplayTarget =
   | (ReplayTargetBase & { readonly kind: 'survival'; readonly goalMs: number })
   | (ReplayTargetBase & { readonly kind: 'event'; readonly eventId: RunEventId })
   | (ReplayTargetBase & { readonly kind: 'victory' })
+  | (ReplayTargetBase & { readonly kind: 'boss-enraged' })
   | (ReplayTargetBase & { readonly kind: 'fast-victory'; readonly goalMs: number })
   | (ReplayTargetBase & { readonly kind: 'kills'; readonly goalCount: number })
   | (ReplayTargetBase & {
@@ -36,6 +37,10 @@ export function createReplayTarget(history: RunHistorySnapshot): ReplayTarget {
   if (latest.result === 'victory') {
     if (unfinishedEvent) {
       return createEventTarget(unfinishedEvent)
+    }
+
+    if (latest.bossElapsedMs !== null && !latest.bossReachedEnraged) {
+      return createBossEnragedTarget()
     }
 
     if (previous && hasSameBuild(latest.artifacts, previous.artifacts)) {
@@ -81,6 +86,8 @@ export function isReplayTargetCompleted(target: ReplayTarget, summary: RunSummar
       return summary.completedEvents.includes(target.eventId)
     case 'victory':
       return summary.result === 'victory'
+    case 'boss-enraged':
+      return summary.bossReachedEnraged
     case 'fast-victory':
       return summary.result === 'victory' && summary.elapsedMs <= target.goalMs
     case 'kills':
@@ -125,6 +132,15 @@ function createVictoryTarget(): ReplayTarget {
     kind: 'victory',
     title: '击败啸月狼王',
     description: '走完十刻成长阶段，击败啸月狼王，完成一局胜利。',
+  }
+}
+
+function createBossEnragedTarget(): ReplayTarget {
+  return {
+    id: 'boss-enraged',
+    kind: 'boss-enraged',
+    title: '经历啸月狼王·狂月',
+    description: '把妖王战推进到狂月阶段，读懂月影突袭，再寻找破绽完成镇压。',
   }
 }
 

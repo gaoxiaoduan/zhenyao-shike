@@ -12,6 +12,7 @@ const summary: RunSummary = {
   defeatedEnemies: 213,
   defeatedElites: 3,
   bossElapsedMs: 96_000,
+  bossReachedEnraged: true,
   completedEvents: ['demon-lair', 'lingquan'],
   artifacts: [{ id: 'qing-feng-jian-xia', name: '青锋剑匣', level: 3 }],
   spiritStones: 12,
@@ -45,6 +46,7 @@ describe('ResultScreen', () => {
     expect(wrapper.text()).toContain('精英斩妖')
     expect(wrapper.text()).toContain('10:02')
     expect(wrapper.text()).toContain('1:36')
+    expect(wrapper.text()).toContain('狂月已至')
     expect(wrapper.text()).toContain('新纪录')
     expect(wrapper.text()).toContain('妖巢暴动已完成')
     expect(wrapper.text()).toContain('灵泉涌现已完成')

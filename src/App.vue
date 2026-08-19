@@ -30,7 +30,6 @@ const practiceResult = shallowRef(false)
 const showOnboarding = shallowRef(true)
 const practiceMode = shallowRef(false)
 const compactMode = shallowRef(false)
-const runWasCompact = shallowRef(false)
 const rebindError = shallowRef<string | null>(null)
 const fullscreenAvailable = shallowRef(Boolean(document.fullscreenEnabled))
 const desktopMedia = window.matchMedia('(hover: hover) and (pointer: fine)')
@@ -71,7 +70,6 @@ function startRun(isPractice = false, isCompact = false) {
   overlay.value = null
   practiceMode.value = isPractice
   compactMode.value = isCompact
-  runWasCompact.value = isCompact
   if (isPractice) {
     showOnboarding.value = false
   }
@@ -139,7 +137,7 @@ function returnHome() {
 }
 
 function retryRun() {
-  startRun(practiceResult.value, runWasCompact.value)
+  startRun(practiceResult.value, compactMode.value)
 }
 
 function toggleCompactMode() {

@@ -41,6 +41,10 @@ function buildLabel(entry: RunHistoryEntry): string {
     : '尚未形成法器构筑'
 }
 
+function bossPhaseLabel(entry: RunHistoryEntry): string {
+  return entry.bossReachedEnraged ? '狂月已至' : '狂月未至'
+}
+
 function close() {
   emit('close')
 }
@@ -87,6 +91,7 @@ function close() {
               <span>斩妖 {{ entry.defeatedEnemies }}</span>
               <span>精英 {{ entry.defeatedElites }}</span>
               <span v-if="entry.bossElapsedMs !== null">妖王战 {{ formatTime(entry.bossElapsedMs) }}</span>
+              <span v-if="entry.bossElapsedMs !== null">{{ bossPhaseLabel(entry) }}</span>
             </div>
             <p class="run-history-entry__build">构筑：{{ buildLabel(entry) }}</p>
             <p class="run-history-entry__events">

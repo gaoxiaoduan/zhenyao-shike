@@ -21,6 +21,7 @@ export interface RunSummaryInput {
   readonly defeatedEnemies: number
   readonly defeatedElites: number
   readonly bossElapsedMs: number | null
+  readonly bossReachedEnraged: boolean
   readonly completedEvents: readonly RunEventId[]
   readonly artifacts: readonly RunArtifactSummary[]
   readonly finalDamageSource: DamageSource
@@ -33,6 +34,7 @@ export interface RunSummary {
   readonly defeatedEnemies: number
   readonly defeatedElites: number
   readonly bossElapsedMs: number | null
+  readonly bossReachedEnraged: boolean
   readonly completedEvents: readonly RunEventId[]
   readonly artifacts: readonly RunArtifactSummary[]
   readonly spiritStones: number
@@ -57,6 +59,7 @@ export function createRunSummary(input: RunSummaryInput): RunSummary {
     defeatedEnemies: input.defeatedEnemies,
     defeatedElites: input.defeatedElites,
     bossElapsedMs: input.bossElapsedMs,
+    bossReachedEnraged: input.bossReachedEnraged,
     completedEvents,
     artifacts: input.artifacts,
     spiritStones: input.practiceMode

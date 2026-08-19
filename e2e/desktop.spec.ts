@@ -51,6 +51,7 @@ function createHistorySave() {
       defeatedEnemies: 55,
       defeatedElites: 2,
       bossElapsedMs: 42_000,
+      bossReachedEnraged: true,
       completedEvents: ['demon-lair', 'lingquan'],
       artifacts: [{ id: 'qing-feng-jian-xia', name: '青锋剑匣', level: 5 }],
       finalDamageSource: 'unknown',
@@ -69,7 +70,7 @@ function createHistorySave() {
     checksum = Math.imul(checksum, 16_777_619)
   }
   return JSON.stringify({
-    schemaVersion: 3,
+    schemaVersion: 4,
     gameVersion: '0.1.0',
     writtenAtMs: 1_700_000_000_000,
     checksum: (checksum >>> 0).toString(16),
@@ -108,12 +109,13 @@ test('opens the polished cave hub and persists audio settings', async ({ page })
 })
 
 test('opens saved personal 历练记录 from the cave hub', async ({ page }) => {
-  await seedBrowserSave(page, 'zhenyao-shike.run-history.v3', createHistorySave())
+  await seedBrowserSave(page, 'zhenyao-shike.run-history.v4', createHistorySave())
   await expect(page.getByLabel('再来一把目标')).toContainText('更快镇压妖王')
   await page.getByRole('button', { name: '打开历练记录' }).click()
 
   await expect(page.getByRole('dialog', { name: '历练记录' })).toContainText('最快胜场')
   await expect(page.getByRole('dialog', { name: '历练记录' })).toContainText('妖王战 00:42')
+  await expect(page.getByRole('dialog', { name: '历练记录' })).toContainText('狂月已至')
   await expect(page.getByRole('dialog', { name: '历练记录' })).toContainText('青锋剑匣 · Lv.5')
 })
 

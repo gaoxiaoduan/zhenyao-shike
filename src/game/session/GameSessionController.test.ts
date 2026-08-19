@@ -506,6 +506,7 @@ describe('一局会话 external seam', () => {
       defeatedEnemies: 0,
       defeatedElites: 0,
       bossElapsedMs: null,
+      bossReachedEnraged: false,
       completedEvents: [],
       artifacts: [],
       spiritStones: 0,

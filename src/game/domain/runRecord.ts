@@ -6,10 +6,10 @@ import type {
   RunSummary,
 } from './runSummary'
 
-export const RUN_HISTORY_STORAGE_KEY = 'zhenyao-shike.run-history.v3'
+export const RUN_HISTORY_STORAGE_KEY = 'zhenyao-shike.run-history.v4'
 export const BOSS_PRACTICE_STORAGE_KEY = 'zhenyao-shike.boss-practice.v2'
 export const MAX_RUN_HISTORY_ENTRIES = 12
-const RUN_HISTORY_SCHEMA_VERSION = 3
+const RUN_HISTORY_SCHEMA_VERSION = 4
 const RUN_HISTORY_GAME_VERSION = '0.1.0'
 const BOSS_PRACTICE_SCHEMA_VERSION = 2
 
@@ -31,6 +31,7 @@ export interface RunHistoryEntry {
   readonly defeatedEnemies: number
   readonly defeatedElites: number
   readonly bossElapsedMs: number | null
+  readonly bossReachedEnraged: boolean
   readonly completedEvents: readonly RunEventId[]
   readonly artifacts: readonly RunArtifactSummary[]
   readonly finalDamageSource: DamageSource
@@ -55,7 +56,7 @@ export interface RunRecordUpdate {
 }
 
 interface StoredRunHistory {
-  readonly schemaVersion: 3
+  readonly schemaVersion: 4
   readonly gameVersion: string
   readonly writtenAtMs: number
   readonly checksum: string
@@ -190,6 +191,7 @@ function createRunHistoryEntry(
     defeatedEnemies: summary.defeatedEnemies,
     defeatedElites: summary.defeatedElites,
     bossElapsedMs: summary.bossElapsedMs,
+    bossReachedEnraged: summary.bossReachedEnraged,
     completedEvents: [...summary.completedEvents],
     artifacts: summary.artifacts.map((artifact) => ({ ...artifact })),
     finalDamageSource: summary.finalDamageSource,
@@ -319,6 +321,7 @@ function isRunHistoryEntry(value: unknown): value is RunHistoryEntry {
     && isFiniteNumber(value.defeatedEnemies)
     && isFiniteNumber(value.defeatedElites)
     && (value.bossElapsedMs === null || isFiniteNumber(value.bossElapsedMs))
+    && typeof value.bossReachedEnraged === 'boolean'
     && Array.isArray(value.completedEvents)
     && value.completedEvents.every(isRunEventId)
     && Array.isArray(value.artifacts)

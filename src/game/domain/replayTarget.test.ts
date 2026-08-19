@@ -13,6 +13,7 @@ function createSummary(overrides: Partial<RunSummary> = {}): RunSummary {
     defeatedEnemies: 42,
     defeatedElites: 1,
     bossElapsedMs: null,
+    bossReachedEnraged: false,
     completedEvents: [],
     artifacts: [],
     spiritStones: 10,
@@ -79,6 +80,32 @@ describe('replay target', () => {
     expect(createReplayTarget(recordHistory(createSummary({
       elapsedMs: 700_000,
       bossElapsedMs: 100_000,
+      bossReachedEnraged: true,
+      completedEvents: ['demon-lair', 'lingquan'],
+    })))).toMatchObject({
+      kind: 'victory',
+      title: '击败啸月狼王',
+    })
+  })
+
+  it('asks the next run to experience 狂月 when a boss victory skipped that phase', () => {
+    expect(createReplayTarget(recordHistory(createSummary({
+      result: 'victory',
+      elapsedMs: 620_000,
+      bossElapsedMs: 20_000,
+      bossReachedEnraged: false,
+      completedEvents: ['demon-lair', 'lingquan'],
+    })))).toMatchObject({
+      kind: 'boss-enraged',
+      title: '经历啸月狼王·狂月',
+    })
+  })
+
+  it('keeps the original victory target after a boss-stage defeat before 狂月', () => {
+    expect(createReplayTarget(recordHistory(createSummary({
+      elapsedMs: 640_000,
+      bossElapsedMs: 20_000,
+      bossReachedEnraged: false,
       completedEvents: ['demon-lair', 'lingquan'],
     })))).toMatchObject({
       kind: 'victory',
@@ -91,6 +118,7 @@ describe('replay target', () => {
       result: 'victory',
       elapsedMs: 660_000,
       bossElapsedMs: 60_000,
+      bossReachedEnraged: true,
       defeatedEnemies: 120,
       completedEvents: ['demon-lair', 'lingquan'],
     })))).toMatchObject({
@@ -105,6 +133,7 @@ describe('replay target', () => {
       result: 'victory',
       elapsedMs: 608_000,
       bossElapsedMs: 8_000,
+      bossReachedEnraged: true,
       defeatedEnemies: 120,
       completedEvents: ['demon-lair', 'lingquan'],
     })))).toMatchObject({
@@ -141,6 +170,7 @@ describe('replay target', () => {
       result: 'victory',
       elapsedMs: 660_000,
       bossElapsedMs: 60_000,
+      bossReachedEnraged: true,
       defeatedEnemies: 120,
       completedEvents: ['demon-lair', 'lingquan'],
     }), 1_700_000_000_001).history
@@ -159,6 +189,7 @@ describe('replay target', () => {
       result: 'victory',
       elapsedMs: 680_000,
       bossElapsedMs: 80_000,
+      bossReachedEnraged: true,
       completedEvents: ['demon-lair', 'lingquan'],
       artifacts,
     }), 1_700_000_000_000)
@@ -166,6 +197,7 @@ describe('replay target', () => {
       result: 'victory',
       elapsedMs: 660_000,
       bossElapsedMs: 60_000,
+      bossReachedEnraged: true,
       completedEvents: ['demon-lair', 'lingquan'],
       artifacts,
     }), 1_700_000_000_001).history
@@ -231,6 +263,12 @@ describe('replay target', () => {
       title: '再斩 175 只妖物',
       description: '',
     }, summary)).toBe(true)
+    expect(isReplayTargetCompleted({
+      id: 'boss-enraged',
+      kind: 'boss-enraged',
+      title: '经历啸月狼王·狂月',
+      description: '',
+    }, { ...summary, bossReachedEnraged: true })).toBe(true)
     expect(isReplayTargetCompleted({
       id: 'build-qing-feng-jian-xia',
       kind: 'build',

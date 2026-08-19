@@ -19,6 +19,7 @@ const history: RunHistorySnapshot = {
     defeatedEnemies: 55,
     defeatedElites: 2,
     bossElapsedMs: 42_000,
+    bossReachedEnraged: true,
     completedEvents: ['demon-lair', 'lingquan'],
     artifacts: [{ id: 'qing-feng-jian-xia', name: '青锋剑匣', level: 5 }],
     finalDamageSource: 'unknown',
@@ -33,6 +34,7 @@ describe('RunHistoryPanel', () => {
     expect(wrapper.text()).toContain('03:00')
     expect(wrapper.text()).toContain('55')
     expect(wrapper.text()).toContain('妖王战 00:42')
+    expect(wrapper.text()).toContain('狂月已至')
     expect(wrapper.text()).toContain('妖巢暴动 · 灵泉涌现')
     expect(wrapper.text()).toContain('青锋剑匣 · Lv.5')
 

@@ -293,6 +293,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
   private boss?: WolfKingEncounter
   private bossSpatial?: BossSpatialState
   private bossStartedPresentationElapsedMs: number | null = null
+  private bossReachedEnraged = false
   private bossHowlRemainingMs = 0
   private bossHowlElapsedMs = 0
   private bossHowlDirectionX = 0
@@ -792,6 +793,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
     const angle = this.randomBetween(0, Math.PI * 2)
     const distance = 180
     this.boss = createWolfKingEncounter()
+    this.bossReachedEnraged = false
     this.bossStartedPresentationElapsedMs = this.presentationElapsedMs
     this.bossSpatial = {
       kind: 'boss',
@@ -843,6 +845,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
     }
     const result = advanceWolfKingEncounter(this.boss, stepMs)
     this.boss = result.encounter
+    this.bossReachedEnraged = this.bossReachedEnraged || this.boss.phase === 'enraged'
     this.bossAttack = this.boss.attack
     this.bossBreachRemainingMs = this.boss.breachRemainingMs
     this.handleWolfKingEvents(result.events)
@@ -1053,6 +1056,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
       defeatedEnemies: this.defeatedEnemies,
       defeatedElites: this.defeatedElites,
       bossElapsedMs,
+      bossReachedEnraged: this.bossReachedEnraged,
       completedEvents: [
         ...(this.demonLair.phase === 'completed' ? ['demon-lair' as const] : []),
         ...(this.lingquanEvent.phase === 'completed' ? ['lingquan' as const] : []),
@@ -1648,6 +1652,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
 
     const result = damageWolfKing(this.boss, damage)
     this.boss = result.encounter
+    this.bossReachedEnraged = this.bossReachedEnraged || this.boss.phase === 'enraged'
     this.bossBreachRemainingMs = this.boss.breachRemainingMs
     this.handleWolfKingEvents(result.events)
   }

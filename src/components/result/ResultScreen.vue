@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import caveBackgroundUrl from '../../assets/game/qingshi-cave-home.png'
 import ReplayTargetCard from '../home/ReplayTargetCard.vue'
 import type { ReplayTarget } from '../../game/domain/replayTarget'
@@ -43,6 +44,8 @@ function formatTime(elapsedMs: number) {
   const seconds = totalSeconds % 60
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
+
+const bossPhaseLabel = computed(() => props.summary.bossReachedEnraged ? '狂月已至' : '狂月未至')
 </script>
 
 <template>
@@ -73,7 +76,7 @@ function formatTime(elapsedMs: number) {
         <div><small>坚持时间</small><strong>{{ formatTime(props.summary.elapsedMs) }}</strong></div>
         <div><small>斩妖数</small><strong>{{ props.summary.defeatedEnemies }}</strong></div>
         <div><small>精英斩妖</small><strong>{{ props.summary.defeatedElites }}</strong></div>
-        <div v-if="props.summary.bossElapsedMs !== null"><small>妖王战</small><strong>{{ formatTime(props.summary.bossElapsedMs) }}</strong></div>
+        <div v-if="props.summary.bossElapsedMs !== null"><small>妖王战</small><strong>{{ formatTime(props.summary.bossElapsedMs) }}</strong><em>{{ bossPhaseLabel }}</em></div>
         <div><small>灵石</small><strong>+{{ props.summary.spiritStones }}</strong></div>
         <div><small>妖丹</small><strong>+{{ props.summary.demonCores }}</strong></div>
       </div>
@@ -243,6 +246,7 @@ function formatTime(elapsedMs: number) {
 .result-stats div + div { border-left: 1px solid rgb(253 230 138 / 0.12); }
 .result-stats small { color: rgb(168 162 158 / 0.8); font-size: 0.65rem; letter-spacing: 0.1em; }
 .result-stats strong { color: #fef3c7; font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+.result-stats em { color: rgb(253 164 175 / 0.8); font-size: 0.58rem; font-style: normal; }
 
 .result-build { margin-top: 1.3rem; }
 .result-build h2 { margin: 0; color: #e7e5e4; font-size: 0.9rem; }

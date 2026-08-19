@@ -17,6 +17,7 @@ function createSummary(overrides: Partial<RunSummary> = {}): RunSummary {
     defeatedEnemies: 42,
     defeatedElites: 1,
     bossElapsedMs: null,
+    bossReachedEnraged: false,
     completedEvents: [],
     artifacts: [{ id: 'qing-feng-jian-xia', name: '青锋剑匣', level: 4 }],
     spiritStones: 10,
@@ -46,6 +47,7 @@ describe('run record', () => {
       defeatedEnemies: 55,
       defeatedElites: 2,
       bossElapsedMs: 42_000,
+      bossReachedEnraged: true,
       completedEvents: ['demon-lair', 'lingquan'],
       finalDamageSource: 'unknown',
     }), 1_700_000_001_000)
@@ -63,6 +65,7 @@ describe('run record', () => {
       elapsedMs: 180_000,
       defeatedEnemies: 55,
       bossElapsedMs: 42_000,
+      bossReachedEnraged: true,
       completedEvents: ['demon-lair', 'lingquan'],
     })
     expect(readRunHistory(storage)).toEqual(second.history)

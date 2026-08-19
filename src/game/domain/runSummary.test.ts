@@ -9,6 +9,7 @@ describe('createRunSummary', () => {
       defeatedEnemies: 42,
       defeatedElites: 1,
       bossElapsedMs: null,
+      bossReachedEnraged: false,
       completedEvents: ['demon-lair'],
       artifacts: [{ id: 'qing-feng-jian-xia', name: '青锋剑匣', level: 4 }],
       finalDamageSource: 'ordinary-enemy',
@@ -18,6 +19,7 @@ describe('createRunSummary', () => {
       defeatedEnemies: 42,
       defeatedElites: 1,
       bossElapsedMs: null,
+      bossReachedEnraged: false,
       completedEvents: ['demon-lair'],
       artifacts: [{ id: 'qing-feng-jian-xia', name: '青锋剑匣', level: 4 }],
       spiritStones: 10,
@@ -34,6 +36,7 @@ describe('createRunSummary', () => {
       defeatedEnemies: 0,
       defeatedElites: 0,
       bossElapsedMs: 20_000,
+      bossReachedEnraged: true,
       completedEvents: [],
       artifacts: [],
       finalDamageSource: 'moon-howl',
@@ -42,5 +45,6 @@ describe('createRunSummary', () => {
     expect(summary.spiritStones).toBe(0)
     expect(summary.demonCores).toBe(0)
     expect(summary.bossElapsedMs).toBe(20_000)
+    expect(summary.bossReachedEnraged).toBe(true)
   })
 })
