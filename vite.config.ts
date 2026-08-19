@@ -1,4 +1,5 @@
 import { configDefaults, defineConfig } from 'vitest/config'
+import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
 
@@ -15,6 +16,34 @@ export default defineConfig(async () => {
 
   return {
     plugins,
+    resolve: {
+      alias: {
+        phaser: fileURLToPath(new URL('./node_modules/phaser/src/phaser-no-physics.js', import.meta.url)),
+      },
+    },
+    define: {
+      global: 'globalThis',
+      'typeof CANVAS_RENDERER': 'true',
+      'typeof WEBGL_RENDERER': 'true',
+      'typeof WEBGL_DEBUG': 'false',
+      'typeof FEATURE_SOUND': 'undefined',
+    },
+    build: {
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [
+              {
+                name: 'phaser',
+                test: /node_modules[\\/]phaser[\\/]/,
+                maxSize: 2048 * 1024,
+                priority: 10,
+              },
+            ],
+          },
+        },
+      },
+    },
     server: isE2e ? { hmr: { overlay: false } } : undefined,
     test: {
       environment: 'node',
