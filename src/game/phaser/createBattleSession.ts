@@ -133,6 +133,7 @@ const SPELL_COOLDOWN_MS = 10_000
 const SPELL_SHIELD_DURATION_MS = 1_500
 const RESULT_FREEZE_MS = 600
 const COMMON_ACTOR_ATLAS_FRAME_COUNT = 20
+const COMMON_ACTOR_ATLAS_FRAME_SIZE = 264
 
 function resolveCommonActorAtlas(frame: number) {
   const normalizedFrame = Math.max(0, Math.floor(frame))
@@ -379,9 +380,16 @@ export class QingShiRidgeScene extends Phaser.Scene {
   preload() {
     this.load.image('qingshi-ground', groundTextureUrl)
     this.load.spritesheet('qingshi-actors', actorAtlasUrl, { frameWidth: 512, frameHeight: 512 })
-    // Keep each WebGL texture below the common 8192px maximum texture width.
-    this.load.spritesheet('qingshi-common-actors-left', commonActorAtlasLeftUrl, { frameWidth: 256, frameHeight: 256 })
-    this.load.spritesheet('qingshi-common-actors-right', commonActorAtlasRightUrl, { frameWidth: 256, frameHeight: 256 })
+    // Common actor cells have a transparent four-pixel gutter so WebGL filtering
+    // cannot sample a neighboring monster when the sprite is scaled.
+    this.load.spritesheet('qingshi-common-actors-left', commonActorAtlasLeftUrl, {
+      frameWidth: COMMON_ACTOR_ATLAS_FRAME_SIZE,
+      frameHeight: COMMON_ACTOR_ATLAS_FRAME_SIZE,
+    })
+    this.load.spritesheet('qingshi-common-actors-right', commonActorAtlasRightUrl, {
+      frameWidth: COMMON_ACTOR_ATLAS_FRAME_SIZE,
+      frameHeight: COMMON_ACTOR_ATLAS_FRAME_SIZE,
+    })
     this.load.spritesheet('qingshi-combat-actors', combatActorAtlasUrl, { frameWidth: 256, frameHeight: 768 })
     this.load.spritesheet('artifact-combat-effects', artifactCombatEffectsAtlasUrl, { frameWidth: 128, frameHeight: 128 })
   }
