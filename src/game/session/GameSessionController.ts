@@ -40,7 +40,7 @@ const NOOP_CALLBACKS: GameSessionCallbacks = {
   onEffect: () => undefined,
 }
 
-type SessionPauseReason = PlatformPauseReason | 'manual' | 'decision' | 'orientation-confirmation'
+type SessionPauseReason = PlatformPauseReason | 'manual' | 'decision' | 'orientation-confirmation' | 'window-focus-confirmation'
 
 interface PauseReasonUpdate {
   readonly reason: SessionPauseReason
@@ -120,6 +120,9 @@ export function createGameSessionController(
     if (pauseReasons.has('visibility')) {
       return 'visibility'
     }
+    if (pauseReasons.has('window-blur')) {
+      return 'window-blur'
+    }
     if (pauseReasons.has('input')) {
       return 'input'
     }
@@ -128,6 +131,9 @@ export function createGameSessionController(
     }
     if (pauseReasons.has('orientation-confirmation')) {
       return 'orientation-confirmation'
+    }
+    if (pauseReasons.has('window-focus-confirmation')) {
+      return 'window-focus-confirmation'
     }
     if (pauseReasons.has('decision')) {
       return 'decision'
@@ -141,7 +147,9 @@ export function createGameSessionController(
       || pauseReasons.has('viewport')
       || pauseReasons.has('visibility')
       || pauseReasons.has('input')
-      || pauseReasons.has('orientation-confirmation')) {
+      || pauseReasons.has('orientation-confirmation')
+      || pauseReasons.has('window-blur')
+      || pauseReasons.has('window-focus-confirmation')) {
       return 'full'
     }
     if (decision?.type === 'initial-artifact-selection'
@@ -411,12 +419,32 @@ export function createGameSessionController(
     confirmOrientation() {
       setPauseReason('orientation-confirmation', false)
     },
+    confirmWindowFocus() {
+      setPauseReason('window-focus-confirmation', false)
+    },
     setPlatformPause(reason, pausedByPlatform) {
       if (reason === 'orientation') {
         setOrientationPause(pausedByPlatform)
         return
       }
       setPauseReason(reason, pausedByPlatform, pausedByPlatform && (reason === 'visibility' || reason === 'input'))
+    },
+    setWindowFocused(focused) {
+      if (focused) {
+        if (!pauseReasons.has('window-blur')) {
+          return
+        }
+        setPauseReasons([
+          { reason: 'window-blur', active: false },
+          { reason: 'window-focus-confirmation', active: true },
+        ])
+        return
+      }
+
+      setPauseReasons([
+        { reason: 'window-focus-confirmation', active: false },
+        { reason: 'window-blur', active: true, clearInput: true },
+      ])
     },
     setPageVisible(visible) {
       setPauseReason('visibility', !visible, !visible)
@@ -490,7 +518,11 @@ export function createGameSessionController(
       if (disposed || lifecycle !== 'active') {
         return
       }
-      if (pauseReasons.has('manual') || pauseReasons.has('visibility') || pauseReasons.has('input')) {
+      if (pauseReasons.has('manual')
+        || pauseReasons.has('visibility')
+        || pauseReasons.has('input')
+        || pauseReasons.has('window-blur')
+        || pauseReasons.has('window-focus-confirmation')) {
         return
       }
       lastInputIntent = intent

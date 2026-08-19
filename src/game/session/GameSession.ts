@@ -8,7 +8,7 @@ import type { DamageSource, RunResult, RunSummary } from '../domain/runSummary'
 import type { RunArtifactSummary } from '../domain/runSummary'
 import type { BattleViewport } from '../platform/viewportPolicy'
 
-export type PlatformPauseReason = 'orientation' | 'viewport' | 'visibility' | 'input'
+export type PlatformPauseReason = 'orientation' | 'viewport' | 'visibility' | 'input' | 'window-blur'
 export type { OnboardingStep } from '../domain/onboardingProgress'
 
 export interface BattleHudSnapshot {
@@ -107,7 +107,7 @@ export type BattleRuntimeOutput =
   | { readonly type: 'run-ended'; readonly summary: RunSummary }
 
 export type GameSessionLifecycle = 'active' | 'ended' | 'disposed'
-export type PausePresentation = PlatformPauseReason | 'manual' | 'decision' | 'orientation-confirmation' | null
+export type PausePresentation = PlatformPauseReason | 'manual' | 'decision' | 'orientation-confirmation' | 'window-focus-confirmation' | null
 
 export interface GameSessionSnapshot {
   readonly lifecycle: GameSessionLifecycle
@@ -131,7 +131,9 @@ export interface GameSession {
   requestManualPause(): void
   releaseManualPause(): void
   confirmOrientation(): void
+  confirmWindowFocus(): void
   setPlatformPause(reason: PlatformPauseReason, paused: boolean): void
+  setWindowFocused(focused: boolean): void
   setPageVisible(visible: boolean): void
   setInputSuspended(suspended: boolean): void
   clearInputIntent(): void

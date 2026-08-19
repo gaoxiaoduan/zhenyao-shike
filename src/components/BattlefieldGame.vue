@@ -114,6 +114,8 @@ const pausePresentation = computed(() => sessionSnapshot.value.pause.presentatio
 const pauseOverlayOpen = computed(() => pausePresentation.value === 'manual'
   || pausePresentation.value === 'orientation'
   || pausePresentation.value === 'viewport'
+  || pausePresentation.value === 'window-blur'
+  || pausePresentation.value === 'window-focus-confirmation'
   || pausePresentation.value === 'orientation-confirmation')
 const battlefieldStyle = computed(() => ({
   '--battle-aspect': viewport.value.aspectRatio.toString(),
@@ -128,6 +130,12 @@ const pauseTitle = computed(() => {
   if (pausePresentation.value === 'orientation-confirmation') {
     return '横屏已恢复'
   }
+  if (pausePresentation.value === 'window-blur') {
+    return '窗口已失焦'
+  }
+  if (pausePresentation.value === 'window-focus-confirmation') {
+    return '窗口已恢复'
+  }
   return '暂避妖潮'
 })
 const pauseDescription = computed(() => {
@@ -139,6 +147,12 @@ const pauseDescription = computed(() => {
   }
   if (pausePresentation.value === 'orientation-confirmation') {
     return '已恢复横屏，点击继续后战场才会恢复。'
+  }
+  if (pausePresentation.value === 'window-blur') {
+    return '小窗已失去焦点，战场已暂停。'
+  }
+  if (pausePresentation.value === 'window-focus-confirmation') {
+    return '窗口已恢复焦点，点击继续后战场才会恢复。'
   }
   return '自动攻击与妖潮已完全暂停。'
 })
@@ -250,6 +264,8 @@ function continueRun() {
     session.value?.releaseManualPause()
   } else if (pausePresentation.value === 'orientation-confirmation') {
     session.value?.confirmOrientation()
+  } else if (pausePresentation.value === 'window-focus-confirmation') {
+    session.value?.confirmWindowFocus()
   }
 }
 
@@ -269,6 +285,19 @@ function syncVisibility() {
     clearKeyboardState()
   }
   session.value?.setPageVisible(!document.hidden)
+}
+
+function handleWindowBlur() {
+  clearKeyboardIntent()
+  if (props.compactMode) {
+    session.value?.setWindowFocused(false)
+  }
+}
+
+function handleWindowFocus() {
+  if (props.compactMode) {
+    session.value?.setWindowFocused(true)
+  }
 }
 
 function isBound(action: ControlAction, key: string) {
@@ -368,7 +397,8 @@ onMounted(() => {
   })
   session.value.setInputSuspended(props.inputSuspended)
   window.addEventListener('resize', syncViewport)
-  window.addEventListener('blur', clearKeyboardIntent)
+  window.addEventListener('blur', handleWindowBlur)
+  window.addEventListener('focus', handleWindowFocus)
   window.addEventListener('keydown', handleKeyDown)
   window.addEventListener('keyup', handleKeyUp)
   document.addEventListener('visibilitychange', syncVisibility)
@@ -379,7 +409,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', syncViewport)
-  window.removeEventListener('blur', clearKeyboardIntent)
+  window.removeEventListener('blur', handleWindowBlur)
+  window.removeEventListener('focus', handleWindowFocus)
   window.removeEventListener('keydown', handleKeyDown)
   window.removeEventListener('keyup', handleKeyUp)
   document.removeEventListener('visibilitychange', syncVisibility)
@@ -488,7 +519,7 @@ onUnmounted(() => {
           {{ pauseDescription }}
         </p>
         <button
-          v-if="pausePresentation === 'manual' || pausePresentation === 'orientation-confirmation'"
+          v-if="pausePresentation === 'manual' || pausePresentation === 'orientation-confirmation' || pausePresentation === 'window-focus-confirmation'"
           class="game-button mt-7 w-full"
           type="button"
           @click="continueRun"

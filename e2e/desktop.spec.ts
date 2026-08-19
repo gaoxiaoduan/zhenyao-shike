@@ -139,6 +139,21 @@ test('keeps a small desktop window playable in 小窗历练', async ({ page }) =
   await expect(page.getByRole('button', { name: '切换标准布局' })).toBeVisible()
 })
 
+test('pauses compact mode after window blur and requires explicit resume', async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 500 })
+  await page.goto('/')
+  await page.getByRole('button', { name: '开始小窗历练' }).click()
+  await page.getByRole('dialog', { name: '选择初始法器' }).getByRole('button').first().click()
+
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')))
+  await expect(page.getByRole('dialog', { name: '历练暂停' })).toContainText('窗口已失焦')
+
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(page.getByRole('dialog', { name: '历练暂停' })).toContainText('窗口已恢复')
+  await page.getByRole('dialog', { name: '历练暂停' }).getByRole('button', { name: '继续历练' }).click()
+  await expect(page.getByRole('dialog', { name: '历练暂停' })).toHaveCount(0)
+})
+
 test('unlocked 妖王演练 enters the boss directly without the mainline onboarding', async ({ page }) => {
   await seedBrowserSave(page, 'zhenyao-shike.boss-practice.v2', createBossPracticeSave())
   await page.setViewportSize({ width: 1280, height: 720 })

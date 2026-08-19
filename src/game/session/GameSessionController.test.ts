@@ -75,6 +75,26 @@ describe('一局会话 external seam', () => {
     expect(snapshots.at(-1)?.pause).toEqual({ active: false, presentation: null })
   })
 
+  it('小窗失焦会暂停并在回焦后等待主动确认', () => {
+    const { session, snapshots, runtime } = createSession()
+
+    session.setInputIntent(createInputIntent({ moveX: 1 }))
+    session.setWindowFocused(false)
+
+    expect(snapshots.at(-1)?.pause).toEqual({ active: true, presentation: 'window-blur' })
+    expect(runtime.setInputIntent).toHaveBeenLastCalledWith(createInputIntent())
+    expect(runtime.setPaused).toHaveBeenCalledOnce()
+    expect(runtime.setPaused).toHaveBeenCalledWith(true)
+
+    session.setWindowFocused(true)
+    expect(snapshots.at(-1)?.pause).toEqual({ active: true, presentation: 'window-focus-confirmation' })
+    expect(runtime.setPaused).toHaveBeenCalledOnce()
+
+    session.confirmWindowFocus()
+    expect(snapshots.at(-1)?.pause).toEqual({ active: false, presentation: null })
+    expect(runtime.setPaused).toHaveBeenNthCalledWith(2, false)
+  })
+
   it('把初始法器选择发布为带 id 的决策，并只接受当前决策一次', () => {
     const { session, reportRuntimeOutput, snapshots, runtime } = createSession()
     const candidates = createInitialArtifactSelection().candidates

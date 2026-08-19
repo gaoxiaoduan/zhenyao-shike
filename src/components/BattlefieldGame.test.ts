@@ -15,7 +15,9 @@ const battleHarness = vi.hoisted(() => ({
     requestManualPause: vi.fn(),
     releaseManualPause: vi.fn(),
     confirmOrientation: vi.fn(),
+    confirmWindowFocus: vi.fn(),
     setPlatformPause: vi.fn(),
+    setWindowFocused: vi.fn(),
     setPageVisible: vi.fn(),
     setInputSuspended: vi.fn(),
     clearInputIntent: vi.fn(),
@@ -158,6 +160,34 @@ describe('BattlefieldGame input adapter', () => {
     expect(wrapper.get('[aria-label="历练暂停"]').text()).toContain('横屏已恢复')
     await wrapper.get('[aria-label="历练暂停"] button').trigger('click')
     expect(battleHarness.session.confirmOrientation).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
+
+  it('pauses compact mode on window blur and resumes only after confirmation', async () => {
+    const wrapper = mount(BattlefieldGame, {
+      props: { settings: DEFAULT_GAME_SETTINGS, showOnboarding: false, compactMode: true },
+    })
+
+    window.dispatchEvent(new Event('blur'))
+    expect(battleHarness.session.setWindowFocused).toHaveBeenCalledWith(false)
+
+    battleHarness.onSnapshot?.({
+      lifecycle: 'active',
+      pause: { active: true, presentation: 'window-focus-confirmation' },
+      decision: null,
+      hud: null,
+      onboardingStep: null,
+      onboardingCompleted: true,
+      result: null,
+    })
+    await nextTick()
+
+    expect(wrapper.get('[aria-label="历练暂停"]').text()).toContain('窗口已恢复')
+    await wrapper.get('[aria-label="历练暂停"] button').trigger('click')
+    expect(battleHarness.session.confirmWindowFocus).toHaveBeenCalledOnce()
+
+    window.dispatchEvent(new Event('focus'))
+    expect(battleHarness.session.setWindowFocused).toHaveBeenCalledWith(true)
     wrapper.unmount()
   })
 
