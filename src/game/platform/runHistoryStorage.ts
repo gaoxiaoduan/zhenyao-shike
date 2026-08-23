@@ -3,19 +3,18 @@ import {
   isValidBossPracticeStorageValue,
   isValidRunHistoryStorageValue,
   RUN_HISTORY_STORAGE_KEY,
-  type RunRecordStorage,
 } from '../domain/runRecord'
+import type { RunHistoryHydrationStatus, RunHistoryStorage } from '../domain/runHistory'
 
 export const RUN_HISTORY_DATABASE_NAME = 'zhenyao-shike.saves.v1'
 export const RUN_HISTORY_DATABASE_VERSION = 1
 export const RUN_HISTORY_STORE_NAME = 'records'
 
-export interface BrowserRunHistoryStorage extends RunRecordStorage {
-  readonly ready: Promise<StorageHydrationStatus>
-  flush(): Promise<boolean>
+export interface InMemoryRunHistoryStorageOptions {
+  readonly hydrationStatus?: RunHistoryHydrationStatus
+  readonly flushResult?: boolean
+  readonly writeResults?: readonly boolean[]
 }
-
-export type StorageHydrationStatus = 'ready' | 'recovered' | 'degraded'
 
 const BACKUP_KEY_SUFFIX = ':backup'
 
@@ -24,10 +23,11 @@ interface StoredRecordPair {
   readonly backup: string | null
 }
 
-export function createBrowserRunHistoryStorage(): BrowserRunHistoryStorage {
+export function createBrowserRunHistoryStorage(): RunHistoryStorage {
   const memoryValues = new Map<string, string>()
   let database: IDBDatabase | null = null
   let pendingWrite: Promise<boolean> = Promise.resolve(true)
+  let allWritesPersisted = true
 
   const ready = hydrate()
 
@@ -41,16 +41,21 @@ export function createBrowserRunHistoryStorage(): BrowserRunHistoryStorage {
       pendingWrite = pendingWrite
         .then(async () => {
           await ready
-          return database ? writeRecord(database, key, value) : false
+          const persisted = database ? await writeRecord(database, key, value) : false
+          allWritesPersisted = allWritesPersisted && persisted
+          return persisted
         })
-        .catch(() => false)
+        .catch(() => {
+          allWritesPersisted = false
+          return false
+        })
     },
     flush() {
-      return pendingWrite
+      return pendingWrite.then(() => allWritesPersisted)
     },
   }
 
-  async function hydrate(): Promise<StorageHydrationStatus> {
+  async function hydrate(): Promise<RunHistoryHydrationStatus> {
     if (typeof indexedDB === 'undefined') {
       return 'degraded'
     }
@@ -84,6 +89,29 @@ export function createBrowserRunHistoryStorage(): BrowserRunHistoryStorage {
       database = null
       return 'degraded'
     }
+  }
+}
+
+export function createInMemoryRunHistoryStorage(
+  options: InMemoryRunHistoryStorageOptions = {},
+): RunHistoryStorage {
+  const values = new Map<string, string>()
+  let writeIndex = 0
+  let allWritesPersisted = true
+  return {
+    ready: Promise.resolve(options.hydrationStatus ?? 'ready'),
+    getItem(key) {
+      return values.get(key) ?? null
+    },
+    setItem(key, value) {
+      values.set(key, value)
+      const persisted = options.writeResults?.[writeIndex] ?? true
+      writeIndex += 1
+      allWritesPersisted = allWritesPersisted && persisted
+    },
+    async flush() {
+      return allWritesPersisted && (options.flushResult ?? true)
+    },
   }
 }
 

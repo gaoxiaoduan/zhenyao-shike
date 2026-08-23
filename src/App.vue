@@ -8,11 +8,14 @@ import SettingsPanel from './components/settings/SettingsPanel.vue'
 import { useGameSettings } from './composables/useGameSettings'
 import { createAudioDirector, type AudioIntent } from './game/audio/audioDirector'
 import { createBrowserAudioOutput } from './game/audio/browserAudioOutput'
+import {
+  createInitialRunHistoryState,
+  createRunHistory,
+  type RunHistoryState,
+} from './game/domain/runHistory'
 import type { RunSummary } from './game/domain/runSummary'
-import { createEmptyRunHistory, hasBossPracticeUnlocked, readRunHistory, recordRunResult, unlockBossPractice } from './game/domain/runRecord'
-import { createReplayTarget, isReplayTargetCompleted, type ReplayTarget } from './game/domain/replayTarget'
-import { GROWTH_PHASE_DURATION_MS } from './game/domain/runProgress'
-import { createBrowserRunHistoryStorage, type StorageHydrationStatus } from './game/platform/runHistoryStorage'
+import type { ReplayTarget } from './game/domain/replayTarget'
+import { createBrowserRunHistoryStorage } from './game/platform/runHistoryStorage'
 import type { ControlAction, GameSettings } from './game/settings/gameSettings'
 import { CONTROL_ACTION_LABELS } from './game/settings/controlPresentation'
 
@@ -34,12 +37,14 @@ const rebindError = shallowRef<string | null>(null)
 const fullscreenAvailable = shallowRef(Boolean(document.fullscreenEnabled))
 const desktopMedia = window.matchMedia('(hover: hover) and (pointer: fine)')
 const runHistoryStorage = createBrowserRunHistoryStorage()
-const bossPracticeUnlocked = shallowRef(false)
-const runHistory = shallowRef(createEmptyRunHistory())
-const replayTarget = shallowRef<ReplayTarget>(createReplayTarget(runHistory.value))
+const runHistoryModule = createRunHistory(runHistoryStorage)
+const initialRunHistoryState = createInitialRunHistoryState()
+const bossPracticeUnlocked = shallowRef(initialRunHistoryState.bossPracticeUnlocked)
+const runHistory = shallowRef(initialRunHistoryState.history)
+const replayTarget = shallowRef<ReplayTarget>(initialRunHistoryState.replayTarget)
 const previousReplayTarget = shallowRef<ReplayTarget | null>(null)
 const previousReplayTargetCompleted = shallowRef(false)
-const storageNotice = shallowRef<Exclude<StorageHydrationStatus, 'ready'> | null>(null)
+const storageNotice = shallowRef<'recovered' | 'degraded' | null>(null)
 const { settings, update, rebind, reset } = useGameSettings()
 const audioDirector = createAudioDirector(createBrowserAudioOutput(), settings.value)
 
@@ -88,43 +93,46 @@ function toggleFullscreen() {
 }
 
 async function hydrateRunHistory() {
-  const hydrationStatus = await runHistoryStorage.ready
-  if (hydrationStatus !== 'ready') {
-    storageNotice.value = hydrationStatus
-  }
-  bossPracticeUnlocked.value = hasBossPracticeUnlocked(runHistoryStorage)
-  runHistory.value = readRunHistory(runHistoryStorage)
-  replayTarget.value = createReplayTarget(runHistory.value)
+  applyRunHistoryState(await runHistoryModule.restore())
 }
 
 async function finishRun(summary: RunSummary) {
   const wasPractice = practiceMode.value
-  const targetForRun = replayTarget.value
-  const targetCompleted = !wasPractice && isReplayTargetCompleted(targetForRun, summary)
+  let settledSummary = summary
   let nextIsNewRecord = false
-  let demonCoreEarned = false
+  let nextPreviousReplayTarget: ReplayTarget | null = null
+  let nextPreviousReplayTargetCompleted = false
   if (!wasPractice) {
-    await runHistoryStorage.ready
-    if (summary.elapsedMs >= GROWTH_PHASE_DURATION_MS) {
-      unlockBossPractice(runHistoryStorage)
-      bossPracticeUnlocked.value = true
-    }
-    const record = recordRunResult(runHistoryStorage, summary)
-    nextIsNewRecord = record.isNewRecord
-    demonCoreEarned = record.demonCoreEarned
-    runHistory.value = record.history
-    replayTarget.value = createReplayTarget(record.history)
-    persistenceStatus.value = await runHistoryStorage.flush() ? 'persisted' : 'session-only'
+    const settlement = await runHistoryModule.completeStandardRun(summary)
+    applyRunHistoryState(settlement.state)
+    settledSummary = settlement.summary
+    nextIsNewRecord = settlement.isNewRecord
+    nextPreviousReplayTarget = settlement.previousReplayTarget
+    nextPreviousReplayTargetCompleted = settlement.previousReplayTargetCompleted
+  } else {
+    settledSummary = await runHistoryModule.completeBossPractice(summary)
   }
-  lastResult.value = { ...summary, demonCores: demonCoreEarned ? 1 : 0 }
+  lastResult.value = settledSummary
   isNewRecord.value = nextIsNewRecord
-  previousReplayTarget.value = wasPractice ? null : targetForRun
-  previousReplayTargetCompleted.value = !wasPractice && targetCompleted
+  previousReplayTarget.value = nextPreviousReplayTarget
+  previousReplayTargetCompleted.value = nextPreviousReplayTargetCompleted
   practiceResult.value = wasPractice
   practiceMode.value = false
   audioDirector.handle({ type: 'music', stage: summary.result })
   overlay.value = null
   screen.value = 'result'
+}
+
+function applyRunHistoryState(nextState: RunHistoryState) {
+  bossPracticeUnlocked.value = nextState.bossPracticeUnlocked
+  runHistory.value = nextState.history
+  replayTarget.value = nextState.replayTarget
+  persistenceStatus.value = nextState.persistenceStatus
+  if (nextState.hydrationStatus !== 'ready') {
+    storageNotice.value = nextState.hydrationStatus
+  } else if (nextState.persistenceStatus === 'session-only') {
+    storageNotice.value = 'degraded'
+  }
 }
 
 function returnHome() {

@@ -81,7 +81,7 @@ const endingNotice = computed(() => sessionSnapshot.value.result?.state === 'end
 let movementIntent = createInputIntent()
 let finishedSummary: RunSummary | null = null
 let onboardingCompletionNotified = false
-const e2eTimeScale = import.meta.env.DEV
+const e2eTimeScale = (import.meta.env.DEV || import.meta.env.VITE_E2E === '1')
   && new URLSearchParams(window.location.search).get('e2e-time') === '30'
   ? 30
   : 1

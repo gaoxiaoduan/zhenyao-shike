@@ -95,6 +95,21 @@ function createBossPracticeSave() {
   })
 }
 
+async function completeFixedSeedStandardRun(page: Page) {
+  const resultScreen = page.locator('.result-screen')
+  for (let attempt = 0; attempt < 600; attempt += 1) {
+    if (await resultScreen.isVisible().catch(() => false)) {
+      return
+    }
+    await page.keyboard.press('1')
+    if (attempt % 4 === 0) {
+      await page.keyboard.press('Space')
+    }
+    await page.waitForTimeout(100)
+  }
+  await expect(resultScreen).toBeVisible({ timeout: 1_000 })
+}
+
 test('opens the polished cave hub and persists audio settings', async ({ page }) => {
   await page.goto('/')
 
@@ -117,6 +132,33 @@ test('opens saved personal 历练记录 from the cave hub', async ({ page }) => 
   await expect(page.getByRole('dialog', { name: '历练记录' })).toContainText('妖王战 00:42')
   await expect(page.getByRole('dialog', { name: '历练记录' })).toContainText('狂月已至')
   await expect(page.getByRole('dialog', { name: '历练记录' })).toContainText('青锋剑匣 · Lv.5')
+})
+
+test('keeps a fixed-seed standard run consistent across settlement, history, and returning home', async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto('/?e2e-time=30')
+  await page.getByRole('button', { name: '开始青石岭历练' }).click()
+  await page.getByRole('dialog', { name: '选择初始法器' }).getByRole('button').first().click()
+  await page.locator('.onboarding-guide').getByRole('button', { name: '跳过教学' }).click()
+  await completeFixedSeedStandardRun(page)
+
+  const resultStats = await page.getByLabel('历练数据').innerText()
+  const elapsedMatch = resultStats.match(/坚持时间\s*(\d+:\d{2})/)
+  expect(elapsedMatch).not.toBeNull()
+  const resultElapsed = elapsedMatch?.[1] ?? ''
+  const historyElapsed = resultElapsed.replace(/^(\d):/, '0$1:')
+
+  await expect(page.locator('.result-screen')).toContainText('本局已写入历练记录')
+  await expect(page.getByLabel('再来一把目标')).toBeVisible()
+  await page.getByRole('button', { name: '查看历练记录' }).click()
+  await expect(page.getByRole('dialog', { name: '历练记录' })).toContainText(`历练 ${historyElapsed}`)
+  await page.getByRole('button', { name: '关闭历练记录' }).click()
+
+  await page.getByRole('button', { name: '返回洞府' }).click()
+  await expect(page.getByLabel('再来一把目标')).toBeVisible()
+  await page.getByRole('button', { name: '打开历练记录' }).click()
+  await expect(page.getByRole('dialog', { name: '历练记录' })).toContainText(`历练 ${historyElapsed}`)
 })
 
 test('boots the real battlefield on a 1280 by 720 desktop', async ({ page }) => {
