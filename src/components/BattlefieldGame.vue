@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, shallowRef, useTemplateRef, watch } from 'vue'
-import { createInputIntent, mergeMovementIntent, type InputIntent } from '../game/domain/inputIntent'
+import {
+  createPlayerIntentModule,
+  type PlayerInput,
+  type PlayerIntent,
+} from '../game/domain/playerIntent'
 import type { BaseArtifact } from '../game/domain/initialArtifactSelection'
 import { createBattleSession } from '../game/phaser/createBattleSession'
 import type { AudioIntent } from '../game/audio/audioDirector'
 import type { DamageSource, RunSummary } from '../game/domain/runSummary'
 import { computeBattleViewport, computeRenderScale } from '../game/platform/viewportPolicy'
-import { normalizeBindingKey, type ControlAction, type GameSettings } from '../game/settings/gameSettings'
+import type { GameSettings } from '../game/settings/gameSettings'
 import type {
   BattleHudSnapshot,
   BattleInstrumentationSnapshot,
@@ -44,7 +48,10 @@ const emit = defineEmits<{
 
 const battleMount = useTemplateRef<HTMLElement>('battleMount')
 const session = shallowRef<GameSession | null>(null)
-const pressedKeys = new Set<string>()
+const playerInput = createPlayerIntentModule({
+  getKeyBindings: () => props.settings.keyBindings,
+})
+const inputResetRevision = shallowRef(0)
 const desktopMedia = window.matchMedia('(hover: hover) and (pointer: fine)')
 const viewport = shallowRef(computeBattleViewport({
   width: window.innerWidth,
@@ -78,7 +85,6 @@ const eventNotice = computed(() => sessionSnapshot.value.decision?.type === 'bat
 const endingNotice = computed(() => sessionSnapshot.value.result?.state === 'ending'
   ? sessionSnapshot.value.result
   : null)
-let movementIntent = createInputIntent()
 let finishedSummary: RunSummary | null = null
 let onboardingCompletionNotified = false
 const e2eTimeScale = (import.meta.env.DEV || import.meta.env.VITE_E2E === '1')
@@ -158,7 +164,7 @@ const pauseDescription = computed(() => {
 })
 watch(() => props.inputSuspended, (suspended) => {
   if (suspended) {
-    clearKeyboardState()
+    resetPlayerInput()
   }
   session.value?.setInputSuspended(suspended)
 })
@@ -170,8 +176,13 @@ watch(() => props.compactMode, () => {
 })
 
 function handleSessionSnapshot(snapshot: GameSessionSnapshot) {
+  const previousPausePresentation = sessionSnapshot.value.pause.presentation
   const wasOnboardingCompleted = sessionSnapshot.value.onboardingCompleted
   sessionSnapshot.value = snapshot
+  if (shouldResetInputForPause(snapshot.pause.presentation)
+    && snapshot.pause.presentation !== previousPausePresentation) {
+    resetPlayerInput()
+  }
   if (props.showOnboarding && !wasOnboardingCompleted && snapshot.onboardingCompleted && !onboardingCompletionNotified) {
     onboardingCompletionNotified = true
     emit('onboardingCompleted')
@@ -234,13 +245,59 @@ function skipOnboarding() {
   session.value?.skipOnboarding()
 }
 
-function setTouchIntent(intent: InputIntent) {
-  movementIntent = createInputIntent({ moveX: intent.moveX, moveY: intent.moveY })
-  session.value?.setInputIntent(movementIntent)
+function dispatchPlayerInput(input: PlayerInput, event?: Event) {
+  const result = playerInput.dispatch(input)
+  if (result.preventDefault) {
+    event?.preventDefault()
+  }
+  if (result.intents.some((intent) => intent.type === 'clear-input')) {
+    inputResetRevision.value += 1
+  }
+  const gameplayInputBlocked = sessionSnapshot.value.pause.active
+    && sessionSnapshot.value.pause.presentation !== 'decision'
+  let resetAfterDroppedIntent = false
+  for (const intent of result.intents) {
+    if (gameplayInputBlocked && (intent.type === 'movement' || intent.type === 'cast-spell')) {
+      resetAfterDroppedIntent = true
+      continue
+    }
+    applyPlayerIntent(intent)
+  }
+  if (resetAfterDroppedIntent) {
+    resetPlayerInput()
+  }
+}
+
+function shouldResetInputForPause(presentation: GameSessionSnapshot['pause']['presentation']) {
+  return presentation === 'orientation' || presentation === 'viewport'
+}
+
+function resetPlayerInput() {
+  dispatchPlayerInput({ type: 'input-reset' })
+}
+
+function applyPlayerIntent(intent: PlayerIntent) {
+  if (intent.type === 'movement') {
+    session.value?.setInputIntent(intent.intent)
+  } else if (intent.type === 'cast-spell') {
+    session.value?.castSpell()
+  } else if (intent.type === 'clear-input') {
+    session.value?.clearInputIntent()
+  } else {
+    toggleSessionPause()
+  }
+}
+
+function handleTouchMove(movement: { readonly moveX: number; readonly moveY: number }) {
+  dispatchPlayerInput({ type: 'touch-move', ...movement })
+}
+
+function handleTouchEnd() {
+  dispatchPlayerInput({ type: 'touch-end' })
 }
 
 function castSpell() {
-  session.value?.castSpell()
+  dispatchPlayerInput({ type: 'touch-cast' })
 }
 
 function resumeEventNotice() {
@@ -251,6 +308,10 @@ function resumeEventNotice() {
 }
 
 function togglePause() {
+  dispatchPlayerInput({ type: 'pause-requested' })
+}
+
+function toggleSessionPause() {
   if (pausePresentation.value === 'manual') {
     session.value?.releaseManualPause()
     return
@@ -282,13 +343,13 @@ function syncViewport() {
 
 function syncVisibility() {
   if (document.hidden) {
-    clearKeyboardState()
+    resetPlayerInput()
   }
   session.value?.setPageVisible(!document.hidden)
 }
 
 function handleWindowBlur() {
-  clearKeyboardIntent()
+  resetPlayerInput()
   if (props.compactMode) {
     session.value?.setWindowFocused(false)
   }
@@ -300,75 +361,15 @@ function handleWindowFocus() {
   }
 }
 
-function isBound(action: ControlAction, key: string) {
-  return props.settings.keyBindings[action].includes(key)
-}
-
-function isMovementKey(key: string) {
-  return (['moveUp', 'moveDown', 'moveLeft', 'moveRight'] as const).some((action) => isBound(action, key))
-}
-
-function syncKeyboardIntent() {
-  movementIntent = mergeMovementIntent({
-    up: props.settings.keyBindings.moveUp.some((key) => pressedKeys.has(key)),
-    down: props.settings.keyBindings.moveDown.some((key) => pressedKeys.has(key)),
-    left: props.settings.keyBindings.moveLeft.some((key) => pressedKeys.has(key)),
-    right: props.settings.keyBindings.moveRight.some((key) => pressedKeys.has(key)),
-  })
-  restoreMovementIntent()
-}
-
-function restoreMovementIntent() {
-  session.value?.setInputIntent(movementIntent)
-}
-
 function handleKeyDown(event: KeyboardEvent) {
   if (props.inputSuspended) {
     return
   }
-  const key = normalizeBindingKey(event.key)
-  if (isBound('pause', key)) {
-    event.preventDefault()
-    if (!event.repeat) {
-      togglePause()
-    }
-    return
-  }
-  if (isBound('castSpell', key)) {
-    event.preventDefault()
-    if (!event.repeat) {
-      session.value?.castSpell()
-    }
-    return
-  }
-  if (!isMovementKey(key)) {
-    return
-  }
-
-  event.preventDefault()
-  pressedKeys.add(key)
-  syncKeyboardIntent()
+  dispatchPlayerInput({ type: 'keyboard-key-down', key: event.key, repeat: event.repeat }, event)
 }
 
 function handleKeyUp(event: KeyboardEvent) {
-  const key = normalizeBindingKey(event.key)
-  if (!isMovementKey(key)) {
-    return
-  }
-
-  event.preventDefault()
-  pressedKeys.delete(key)
-  syncKeyboardIntent()
-}
-
-function clearKeyboardState() {
-  pressedKeys.clear()
-  movementIntent = createInputIntent()
-}
-
-function clearKeyboardIntent() {
-  clearKeyboardState()
-  restoreMovementIntent()
+  dispatchPlayerInput({ type: 'keyboard-key-up', key: event.key }, event)
 }
 
 onMounted(() => {
@@ -456,7 +457,13 @@ onUnmounted(() => {
       </button>
     </div>
 
-    <BattleTouchControls :snapshot="hudSnapshot" @cast="castSpell" @move="setTouchIntent" />
+    <BattleTouchControls
+      :snapshot="hudSnapshot"
+      :input-reset-revision="inputResetRevision"
+      @cast="castSpell"
+      @end="handleTouchEnd"
+      @move="handleTouchMove"
+    />
     <BattleHud :snapshot="hudSnapshot" :key-bindings="settings.keyBindings" :compact="props.compactMode" />
 
     <div v-if="endingNotice" class="battlefield__ending" role="status" aria-live="assertive">

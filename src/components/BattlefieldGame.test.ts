@@ -7,6 +7,7 @@ import { createArtifactInventory, generateUpgradeChoices } from '../game/domain/
 import { DEFAULT_GAME_SETTINGS } from '../game/settings/gameSettings'
 import type { GameSessionEffect, GameSessionSnapshot } from '../game/session/GameSession'
 import BattlefieldGame from './BattlefieldGame.vue'
+import BattleTouchControls from './BattleTouchControls.vue'
 
 const battleHarness = vi.hoisted(() => ({
   onSnapshot: undefined as ((snapshot: GameSessionSnapshot) => void) | undefined,
@@ -78,7 +79,82 @@ describe('BattlefieldGame input adapter', () => {
     wrapper.unmount()
   })
 
-  it('resumes a physically held direction after choosing an upgrade with a number key', async () => {
+  it('clears input on blur, page hiding, and manual pause', () => {
+    const wrapper = mount(BattlefieldGame, {
+      props: { settings: DEFAULT_GAME_SETTINGS, showOnboarding: false },
+    })
+    const hidden = vi.spyOn(document, 'hidden', 'get')
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w' }))
+    window.dispatchEvent(new Event('blur'))
+    hidden.mockReturnValue(true)
+    document.dispatchEvent(new Event('visibilitychange'))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'escape' }))
+
+    expect(battleHarness.session.clearInputIntent).toHaveBeenCalledTimes(3)
+    expect(battleHarness.session.requestManualPause).toHaveBeenCalledOnce()
+
+    hidden.mockRestore()
+    wrapper.unmount()
+  })
+
+  it('invalidates the active touch adapter when manually pausing', async () => {
+    const wrapper = mount(BattlefieldGame, {
+      props: { settings: DEFAULT_GAME_SETTINGS, showOnboarding: false },
+    })
+    const touchControls = wrapper.getComponent(BattleTouchControls)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'escape' }))
+    await nextTick()
+
+    const inputResetRevision = touchControls.props('inputResetRevision')
+    wrapper.unmount()
+    expect(inputResetRevision).toBe(1)
+  })
+
+  it('clears the player input module when the session enters an orientation pause', () => {
+    const wrapper = mount(BattlefieldGame, {
+      props: { settings: DEFAULT_GAME_SETTINGS, showOnboarding: false },
+    })
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w' }))
+    battleHarness.onSnapshot?.({
+      lifecycle: 'active',
+      pause: { active: true, presentation: 'orientation' },
+      decision: null,
+      hud: null,
+      onboardingStep: null,
+      onboardingCompleted: true,
+      result: null,
+    })
+
+    expect(battleHarness.session.clearInputIntent).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
+
+  it('drops movement and casting pressed while the session is paused', () => {
+    const wrapper = mount(BattlefieldGame, {
+      props: { settings: DEFAULT_GAME_SETTINGS, showOnboarding: false },
+    })
+
+    battleHarness.onSnapshot?.({
+      lifecycle: 'active',
+      pause: { active: true, presentation: 'manual' },
+      decision: null,
+      hud: null,
+      onboardingStep: null,
+      onboardingCompleted: true,
+      result: null,
+    })
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w' }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }))
+
+    expect(battleHarness.session.setInputIntent).not.toHaveBeenCalled()
+    expect(battleHarness.session.castSpell).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('keeps a physically held direction through an upgrade decision', async () => {
     const wrapper = mount(BattlefieldGame, {
       props: { settings: DEFAULT_GAME_SETTINGS, showOnboarding: false },
     })
@@ -102,6 +178,8 @@ describe('BattlefieldGame input adapter', () => {
       result: null,
     })
     await nextTick()
+
+    expect(battleHarness.session.clearInputIntent).not.toHaveBeenCalled()
     await wrapper.get('[aria-label="法器突破与构筑升级"]').trigger('keydown', { key: '1' })
 
     expect(battleHarness.session.selectUpgrade).toHaveBeenCalledWith('decision-upgrade', choices[0]!.choiceId)

@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { shallowRef } from 'vue'
-import { createInputIntent } from '../game/domain/inputIntent'
+import { shallowRef, watch } from 'vue'
 import ArtifactIcon from './game/ArtifactIcon.vue'
 import type { BattleHudSnapshot } from '../game/session/GameSession'
 
 const props = withDefaults(defineProps<{
   snapshot?: BattleHudSnapshot | null
+  inputResetRevision?: number
 }>(), {
   snapshot: null,
+  inputResetRevision: 0,
 })
 
 interface JoystickCenter {
@@ -16,13 +17,22 @@ interface JoystickCenter {
 }
 
 const emit = defineEmits<{
-  move: [intent: ReturnType<typeof createInputIntent>]
+  move: [movement: { readonly moveX: number; readonly moveY: number }]
   cast: []
+  end: []
 }>()
 
 const joystickCenter = shallowRef<JoystickCenter | null>(null)
 const thumbOffset = shallowRef({ x: 0, y: 0 })
 const activePointerId = shallowRef<number | null>(null)
+
+function resetMovement() {
+  activePointerId.value = null
+  joystickCenter.value = null
+  thumbOffset.value = { x: 0, y: 0 }
+}
+
+watch(() => props.inputResetRevision, resetMovement)
 
 function updateMovement(event: PointerEvent) {
   const center = joystickCenter.value
@@ -38,7 +48,7 @@ function updateMovement(event: PointerEvent) {
   const offset = { x: deltaX * clamp, y: deltaY * clamp }
 
   thumbOffset.value = offset
-  emit('move', createInputIntent({ moveX: offset.x / 58, moveY: offset.y / 58 }))
+  emit('move', { moveX: offset.x / 58, moveY: offset.y / 58 })
 }
 
 function beginMovement(event: PointerEvent) {
@@ -48,7 +58,7 @@ function beginMovement(event: PointerEvent) {
   joystickCenter.value = { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
   thumbOffset.value = { x: 0, y: 0 }
   zone.setPointerCapture(event.pointerId)
-  emit('move', createInputIntent())
+  emit('move', { moveX: 0, moveY: 0 })
 }
 
 function endMovement(event: PointerEvent) {
@@ -56,10 +66,8 @@ function endMovement(event: PointerEvent) {
     return
   }
 
-  activePointerId.value = null
-  joystickCenter.value = null
-  thumbOffset.value = { x: 0, y: 0 }
-  emit('move', createInputIntent())
+  resetMovement()
+  emit('end')
 }
 
 function castSpell() {
