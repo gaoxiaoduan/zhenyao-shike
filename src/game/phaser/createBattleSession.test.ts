@@ -6,6 +6,11 @@ import {
   type ArtifactInventory,
   type UpgradeDraftChoice,
 } from '../domain/artifactInventory'
+import {
+  applyArtifactBuildAction,
+  createArtifactBuild,
+  type ArtifactBuildState,
+} from '../domain/artifactBuild'
 import { createInputIntent } from '../domain/inputIntent'
 import type { BattleViewport } from '../platform/viewportPolicy'
 import { createBattleRuntimeAdapter, QingShiRidgeScene } from './createBattleSession'
@@ -115,18 +120,25 @@ describe('Phaser battle runtime adapter', () => {
       statsDescription: '伤害提升',
       attackColor: qingFeng.attackColor,
     }
-    const state = scene as unknown as {
-      inventory: ArtifactInventory
-      pendingLevelUps: number
-      awaitingUpgradeSelection: boolean
-      upgradeChoices: readonly UpgradeDraftChoice[]
-      ascensionChoices: readonly unknown[]
+    let build = createArtifactBuild(7301)
+    build = applyArtifactBuildAction(build, {
+      type: 'select-initial-artifact',
+      artifactId: 'qing-feng-jian-xia',
+    }).state
+    build = {
+      ...build,
+      inventory,
+      pendingLevelUps: 1,
+      decision: {
+        type: 'upgrade',
+        choices: [choice],
+        deductionCount: 0,
+        canDeduce: false,
+        isZhouTian: false,
+      },
     }
-    state.inventory = inventory
-    state.pendingLevelUps = 1
-    state.awaitingUpgradeSelection = true
-    state.upgradeChoices = [choice]
-    state.ascensionChoices = []
+    const state = scene as unknown as { build: ArtifactBuildState }
+    state.build = build
 
     scene.selectUpgrade(choice.choiceId)
 
@@ -147,7 +159,7 @@ describe('Phaser battle runtime adapter', () => {
       true,
     ) as unknown as {
       terrainLayout: unknown
-      upgradeDraftState: unknown
+      build: ArtifactBuildState
       lingquanEvent: unknown
     }
     const second = new QingShiRidgeScene(
@@ -163,12 +175,12 @@ describe('Phaser battle runtime adapter', () => {
       true,
     ) as unknown as {
       terrainLayout: unknown
-      upgradeDraftState: unknown
+      build: ArtifactBuildState
       lingquanEvent: unknown
     }
 
     expect(first.terrainLayout).toEqual(second.terrainLayout)
-    expect(first.upgradeDraftState).toEqual(second.upgradeDraftState)
+    expect(first.build.draftState).toEqual(second.build.draftState)
     expect(first.lingquanEvent).toEqual(second.lingquanEvent)
   })
 })

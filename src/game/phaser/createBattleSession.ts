@@ -7,23 +7,18 @@ import artifactCombatEffectsAtlasUrl from '../../assets/game/artifact-combat-eff
 import groundTextureUrl from '../../assets/game/qingshi-ground.png'
 import { musicStageForRun, type MusicStage, type SoundCue } from '../audio/audioDirector'
 import {
-  applyAscensionChoice,
-  applyFlexibleUpgradeChoice,
-  applyUpgradeChoice,
   ARTIFACT_DEFINITIONS,
-  createArtifactInventory,
-  createUpgradeDraftState,
-  draftUpgradeChoices,
-  getAvailableAscensionChoices,
   getArtifactLevel,
   getArtifactStats,
-  type ArtifactInventory,
   type ArtifactStats,
   type ArtifactId,
-  type AscensionRecipe,
-  type UpgradeDraftChoice,
-  type UpgradeDraftState,
 } from '../domain/artifactInventory'
+import {
+  applyArtifactBuildAction,
+  createArtifactBuild,
+  getArtifactBuildCombatResult,
+  type ArtifactBuildState,
+} from '../domain/artifactBuild'
 import {
   aggregateRadarPoints,
   computeCombatCamera,
@@ -78,11 +73,7 @@ import {
   type QingShiRidgeTerrainLayout,
 } from '../domain/qingshiEventsAndTerrain'
 import { createInputIntent, type InputIntent } from '../domain/inputIntent'
-import {
-  createInitialArtifactSelection,
-  selectInitialArtifact,
-  type BaseArtifactId,
-} from '../domain/initialArtifactSelection'
+import type { BaseArtifactId } from '../domain/initialArtifactSelection'
 import type { OnboardingStep } from '../domain/onboardingProgress'
 import { advancePlayerDamageState, resolvePlayerDamage, type PlayerDamageKind } from '../domain/playerDamageRules'
 import {
@@ -115,16 +106,6 @@ import {
   type WolfKingEncounter,
   type WolfKingEvent,
 } from '../domain/wolfKingRules'
-import {
-  applyZhouTianChoice,
-  calculateTunaHeal,
-  canPerformDeduction,
-  createDeductionState,
-  createZhouTianState,
-  generateZhouTianChoices,
-  performDeduction,
-  type ZhouTianOptionId,
-} from '../domain/deductionAndZhouTian'
 import type {
   BattleInstrumentationSnapshot,
   CreateGameSessionOptions,
@@ -335,19 +316,7 @@ export class QingShiRidgeScene extends Phaser.Scene implements CombatPresentatio
   private thunderEffects: ThunderEffect[] = []
   private combatBursts: CombatBurst[] = []
   private combatBurstPool: CombatBurst[] = []
-  private inventory: ArtifactInventory = createArtifactInventory()
-  private pendingLevelUps = 0
-  private awaitingUpgradeSelection = false
-  private upgradeChoices: readonly UpgradeDraftChoice[] = []
-  private upgradeDraftState: UpgradeDraftState
-  private awaitingAscensionSelection = false
-  private ascensionChoices: readonly AscensionRecipe[] = []
-  private deductionState = createDeductionState(1)
-  private zhouTianState = createZhouTianState()
-  private isZhouTianActive = false
-  private playerDamageMultiplier = 1.0
-  private attackIntervalMultiplier = 1.0
-  private playerMaxHealthMultiplier = 1.0
+  private build: ArtifactBuildState
   private terrainLayout!: QingShiRidgeTerrainLayout
   private readonly discoveredLandmarkIds = new Set<string>()
   private demonLair: DemonLairState = createDemonLairState(WORLD_SIZE)
@@ -355,9 +324,7 @@ export class QingShiRidgeScene extends Phaser.Scene implements CombatPresentatio
   private pickupRadiusBoostRemainingMs = 0
   private readonly seenBattlefieldEvents = new Set<'demon-lair' | 'lingquan'>()
   private lastEliteSpawnMs: number | null = null
-  private readonly initialArtifactSelection = createInitialArtifactSelection()
   private readonly completedOnboardingSteps = new Set<OnboardingStep>()
-  private awaitingInitialArtifact = true
   private onboardingSkipped = false
   private paused = false
   private randomState = 1
@@ -439,9 +406,9 @@ export class QingShiRidgeScene extends Phaser.Scene implements CombatPresentatio
     this.deterministicAcceptance = deterministicAcceptance
     this.practiceMode = practiceMode
     const sessionSeed = deterministicAcceptance ? DETERMINISTIC_ACCEPTANCE_SEED : runSeed
+    this.build = createArtifactBuild(sessionSeed)
     this.randomState = (Math.floor(sessionSeed) >>> 0) || 1
     this.terrainLayout = generateQingShiRidgeLayout(sessionSeed)
-    this.upgradeDraftState = createUpgradeDraftState(sessionSeed)
     this.lingquanEvent = createLingquanEventState(this.terrainLayout.spiritNodes.length, sessionSeed)
   }
 
@@ -498,14 +465,11 @@ export class QingShiRidgeScene extends Phaser.Scene implements CombatPresentatio
     this.updateDiscoveredLandmarks()
     this.updateHudText()
     this.renderBattlefield()
-    this.reportRuntimeOutput({
-      type: 'initial-artifact-selection-requested',
-      candidates: this.initialArtifactSelection.candidates,
-    })
+    this.reportArtifactBuildDecision()
   }
 
   update(_time: number, deltaMs: number) {
-    if (this.paused || this.ended || this.awaitingInitialArtifact) {
+    if (this.paused || this.ended || this.build.decision?.type === 'initial-artifact-selection') {
       return
     }
 
@@ -616,7 +580,7 @@ export class QingShiRidgeScene extends Phaser.Scene implements CombatPresentatio
   }
 
   setInputIntent(intent: InputIntent) {
-    if (this.paused || this.ended || this.awaitingInitialArtifact) {
+    if (this.paused || this.ended || this.build.decision?.type === 'initial-artifact-selection') {
       this.inputIntent = createInputIntent()
       return
     }
@@ -625,7 +589,7 @@ export class QingShiRidgeScene extends Phaser.Scene implements CombatPresentatio
   }
 
   castSpell() {
-    if (this.paused || this.ended || this.awaitingInitialArtifact) {
+    if (this.paused || this.ended || this.build.decision?.type === 'initial-artifact-selection') {
       return
     }
 
@@ -633,13 +597,15 @@ export class QingShiRidgeScene extends Phaser.Scene implements CombatPresentatio
   }
 
   selectInitialArtifact(artifactId: BaseArtifactId) {
-    if (!this.awaitingInitialArtifact) {
+    const result = applyArtifactBuildAction(this.build, {
+      type: 'select-initial-artifact',
+      artifactId,
+    })
+    if (!result.accepted) {
       return
     }
 
-    const selection = selectInitialArtifact(this.initialArtifactSelection, artifactId)
-    this.inventory = createArtifactInventory(selection.selected.id)
-    this.awaitingInitialArtifact = false
+    this.applyBuildTransition(result)
     this.emitAudio('ui-confirm')
     if (this.practiceMode) {
       this.progress = advanceRunProgress(this.progress, GROWTH_PHASE_DURATION_MS)
@@ -654,174 +620,126 @@ export class QingShiRidgeScene extends Phaser.Scene implements CombatPresentatio
   }
 
   selectUpgrade(choiceId: string) {
-    if (!this.awaitingUpgradeSelection) {
+    const result = applyArtifactBuildAction(this.build, {
+      type: 'select-upgrade',
+      choiceId,
+    })
+    if (!result.accepted) {
       return
     }
 
-    if (this.isZhouTianActive) {
-      try {
-        const result = applyZhouTianChoice(this.zhouTianState, choiceId as ZhouTianOptionId)
-        this.zhouTianState = result.nextState
-        this.playerDamageMultiplier += result.damageMultiplierDelta
-        this.attackIntervalMultiplier = Math.max(
-          0.5,
-          this.attackIntervalMultiplier + result.attackIntervalMultiplierDelta,
-        )
-        if (result.maxHealthMultiplierDelta > 0) {
-          this.playerMaxHealthMultiplier += result.maxHealthMultiplierDelta
-          const newMax = Math.round(100 * this.playerMaxHealthMultiplier)
-          const bonus = newMax - this.player.maxHealth
-          this.player.maxHealth = newMax
-          this.player.health = Math.min(this.player.maxHealth, this.player.health + bonus)
-        }
-      } catch {
-        return
-      }
-
-      this.pendingLevelUps = Math.max(0, this.pendingLevelUps - 1)
-      this.awaitingUpgradeSelection = false
-      this.emitAudio('ui-confirm')
-      this.updateHudText()
-
-      if (this.pendingLevelUps > 0) {
-        this.triggerNextUpgradeIfAvailable()
-      }
-      return
-    }
-
-    const choice = this.upgradeChoices.find((c) => c.choiceId === choiceId)
-    if (!choice) {
-      return
-    }
-
-    if (choice.type === 'flex') {
-      const result = applyFlexibleUpgradeChoice(this.upgradeDraftState, choice.choiceId)
-      this.upgradeDraftState = result.nextState
-      this.playerDamageMultiplier += result.damageMultiplierDelta
-      this.attackIntervalMultiplier = Math.max(
-        0.5,
-        this.attackIntervalMultiplier + result.attackIntervalMultiplierDelta,
-      )
-      if (result.maxHealthMultiplierDelta > 0) {
-        this.playerMaxHealthMultiplier += result.maxHealthMultiplierDelta
-        const newMax = Math.round(100 * this.playerMaxHealthMultiplier)
-        const bonus = newMax - this.player.maxHealth
-        this.player.maxHealth = newMax
-        this.player.health = Math.min(this.player.maxHealth, this.player.health + bonus)
-      }
-    } else {
-      this.inventory = applyUpgradeChoice(this.inventory, choice.artifactId)
-    }
-    this.pendingLevelUps = Math.max(0, this.pendingLevelUps - 1)
-    this.awaitingUpgradeSelection = false
-    this.upgradeChoices = []
+    this.applyBuildTransition(result)
     this.emitAudio('ui-confirm')
-
     this.updateHudText()
-
-    if (this.pendingLevelUps > 0) {
-      this.triggerNextUpgradeIfAvailable()
-    } else {
-      const ascensionChoices = getAvailableAscensionChoices(this.inventory)
-      this.ascensionChoices = ascensionChoices
-      if (ascensionChoices.length > 0) {
-        this.beginAscensionSelection(ascensionChoices)
-      }
-    }
+    this.reportArtifactBuildDecision()
   }
 
   deduceUpgrade() {
-    if (!this.awaitingUpgradeSelection || this.isZhouTianActive) {
+    const result = applyArtifactBuildAction(this.build, { type: 'deduce-upgrade' })
+    if (!result.accepted) {
       return
     }
-
-    if (!canPerformDeduction(
-      this.deductionState,
-      this.upgradeChoices,
-      this.inventory,
-      this.upgradeDraftState,
-    )) {
-      return
-    }
-
-    const result = performDeduction(
-      this.deductionState,
-      this.upgradeChoices,
-      this.inventory,
-      this.upgradeDraftState,
-    )
-    this.deductionState = result.nextState
-    this.upgradeDraftState = result.nextDraftState
-    this.upgradeChoices = result.newChoices
-    this.reportRuntimeOutput({
-      type: 'upgrade-requested',
-      choices: this.upgradeChoices,
-      deductionCount: this.deductionState.remainingCount,
-      canDeduce: canPerformDeduction(
-        this.deductionState,
-        this.upgradeChoices,
-        this.inventory,
-        this.upgradeDraftState,
-      ),
-      isZhouTian: false,
-    })
+    this.applyBuildTransition(result)
+    this.reportArtifactBuildDecision()
   }
 
   tunaHeal() {
-    if (!this.awaitingUpgradeSelection && !this.awaitingAscensionSelection) {
+    const result = applyArtifactBuildAction(this.build, {
+      type: 'tuna-heal',
+      maxHealth: this.player.maxHealth,
+    })
+    if (!result.accepted) {
       return
     }
 
-    const heal = calculateTunaHeal(this.player.maxHealth)
-    this.player.health = Math.min(this.player.maxHealth, this.player.health + heal)
-
-    this.awaitingUpgradeSelection = false
-    this.awaitingAscensionSelection = false
-    this.upgradeChoices = []
-    this.ascensionChoices = []
-    this.pendingLevelUps = Math.max(0, this.pendingLevelUps - 1)
-
+    this.applyBuildTransition(result)
     this.emitAudio('ui-back')
     this.updateHudText()
-    if (this.pendingLevelUps > 0) {
-      this.triggerNextUpgradeIfAvailable()
-    }
+    this.reportArtifactBuildDecision()
   }
 
   selectAscension(choiceId: string) {
-    if (!this.awaitingAscensionSelection) {
+    const result = applyArtifactBuildAction(this.build, {
+      type: 'select-ascension',
+      choiceId,
+    })
+    if (!result.accepted) {
       return
     }
 
-    const choice = this.ascensionChoices.find((candidate) => candidate.choiceId === choiceId)
-    if (!choice) {
-      return
-    }
-
-    this.inventory = applyAscensionChoice(this.inventory, choiceId)
+    this.applyBuildTransition(result)
     this.emitAudio('artifact-ascended')
-    this.awaitingAscensionSelection = false
-    this.ascensionChoices = []
     this.updateHudText()
-
-    const nextAscensions = getAvailableAscensionChoices(this.inventory)
-    if (nextAscensions.length > 0) {
-      this.beginAscensionSelection(nextAscensions)
-    }
+    this.reportArtifactBuildDecision()
   }
 
   skipAscension() {
-    if (!this.awaitingAscensionSelection) {
+    const result = applyArtifactBuildAction(this.build, { type: 'skip-ascension' })
+    if (!result.accepted) {
       return
     }
 
-    this.awaitingAscensionSelection = false
-    this.ascensionChoices = []
+    this.applyBuildTransition(result)
     this.emitAudio('ui-back')
   }
 
   skipOnboarding() {
     this.onboardingSkipped = true
+  }
+
+  private applyBuildTransition(
+    transition: ReturnType<typeof applyArtifactBuildAction>,
+  ) {
+    if (!transition.accepted) {
+      return
+    }
+
+    const previousMaxHealthMultiplier = this.build.modifiers.maxHealthMultiplier
+    this.build = transition.state
+    const combatResult = getArtifactBuildCombatResult(this.build)
+    if (combatResult.modifiers.maxHealthMultiplier !== previousMaxHealthMultiplier) {
+      const newMaxHealth = Math.round(100 * combatResult.modifiers.maxHealthMultiplier)
+      const bonus = newMaxHealth - this.player.maxHealth
+      this.player.maxHealth = newMaxHealth
+      this.player.health = Math.min(this.player.maxHealth, this.player.health + bonus)
+    }
+    if (transition.effect?.type === 'health-restored') {
+      this.player.health = Math.min(
+        this.player.maxHealth,
+        this.player.health + transition.effect.amount,
+      )
+    }
+  }
+
+  private reportArtifactBuildDecision() {
+    const decision = this.build.decision
+    if (!decision) {
+      return
+    }
+
+    if (decision.type === 'initial-artifact-selection') {
+      this.reportRuntimeOutput({
+        type: 'initial-artifact-selection-requested',
+        candidates: decision.candidates,
+      })
+      return
+    }
+
+    if (decision.type === 'upgrade') {
+      this.reportRuntimeOutput({
+        type: 'upgrade-requested',
+        choices: decision.choices,
+        deductionCount: decision.deductionCount,
+        canDeduce: decision.canDeduce,
+        isZhouTian: decision.isZhouTian,
+      })
+      return
+    }
+
+    this.reportRuntimeOutput({
+      type: 'ascension-requested',
+      choices: decision.choices,
+    })
   }
 
   setPaused(paused: boolean) {
@@ -1135,7 +1053,7 @@ export class QingShiRidgeScene extends Phaser.Scene implements CombatPresentatio
         ...(this.demonLair.phase === 'completed' ? ['demon-lair' as const] : []),
         ...(this.lingquanEvent.phase === 'completed' ? ['lingquan' as const] : []),
       ] satisfies readonly RunEventId[],
-      artifacts: this.inventory.slots.map((slot) => ({
+      artifacts: this.build.inventory.slots.map((slot) => ({
         id: slot.id,
         name: ARTIFACT_DEFINITIONS[slot.id].name,
         level: slot.level,
@@ -1150,7 +1068,7 @@ export class QingShiRidgeScene extends Phaser.Scene implements CombatPresentatio
 
   private movePlayer(stepMs: number) {
     let speedMultiplier = 1.0
-    for (const slot of this.inventory.slots) {
+    for (const slot of this.build.inventory.slots) {
       const stats = getArtifactStats(slot.id, slot.level)
       if (stats.moveSpeedMultiplier > speedMultiplier) {
         speedMultiplier = stats.moveSpeedMultiplier
@@ -1383,7 +1301,11 @@ export class QingShiRidgeScene extends Phaser.Scene implements CombatPresentatio
             value: 1,
           })
         }
-        this.deductionState = createDeductionState(this.deductionState.remainingCount + result.bonusDeduction)
+        const deduction = applyArtifactBuildAction(this.build, {
+          type: 'grant-deduction',
+          count: result.bonusDeduction,
+        })
+        this.applyBuildTransition(deduction)
         this.emitAudio('lair-destroyed')
         if (this.demonLair.guardEliteDefeated) {
           this.demonLair = { ...this.demonLair, phase: 'completed' }
@@ -1539,9 +1461,9 @@ export class QingShiRidgeScene extends Phaser.Scene implements CombatPresentatio
     }
     this.thunderEffects = aliveThunder
 
-    for (const slot of this.inventory.slots) {
+    for (const slot of this.build.inventory.slots) {
       const stats = getArtifactStats(slot.id, slot.level)
-      const attackIntervalMs = stats.intervalMs * this.attackIntervalMultiplier
+      const attackIntervalMs = stats.intervalMs * this.build.modifiers.attackIntervalMultiplier
 
       if (slot.id === 'qing-feng-jian-xia') {
         this.swordElapsedMs += stepMs
@@ -1880,79 +1802,15 @@ export class QingShiRidgeScene extends Phaser.Scene implements CombatPresentatio
   }
 
   private handleLevelUpGained(levels: number) {
-    this.pendingLevelUps += levels
-    this.triggerNextUpgradeIfAvailable()
-  }
-
-  private triggerNextUpgradeIfAvailable() {
-    if (this.awaitingUpgradeSelection || this.pendingLevelUps <= 0) {
+    const result = applyArtifactBuildAction(this.build, {
+      type: 'grant-levels',
+      count: levels,
+    })
+    if (!result.accepted) {
       return
     }
-
-    const draft = draftUpgradeChoices(this.inventory, this.upgradeDraftState, { count: 3 })
-    const choices = draft.choices
-    this.upgradeDraftState = draft.nextState
-    const ascensionChoices = getAvailableAscensionChoices(this.inventory)
-    this.ascensionChoices = ascensionChoices
-
-    if (choices.length > 0) {
-      this.isZhouTianActive = false
-      this.awaitingUpgradeSelection = true
-      this.upgradeChoices = choices
-      this.awaitingAscensionSelection = false
-      this.reportRuntimeOutput({
-        type: 'upgrade-requested',
-        choices,
-        deductionCount: this.deductionState.remainingCount,
-        canDeduce: canPerformDeduction(
-          this.deductionState,
-          choices,
-          this.inventory,
-          this.upgradeDraftState,
-        ),
-        isZhouTian: false,
-      })
-      return
-    }
-
-    if (ascensionChoices.length > 0) {
-      this.isZhouTianActive = false
-      this.pendingLevelUps = 0
-      this.awaitingUpgradeSelection = false
-      this.upgradeChoices = []
-      this.beginAscensionSelection(ascensionChoices)
-      return
-    }
-
-    const zhouTianChoices = generateZhouTianChoices(this.zhouTianState)
-    if (zhouTianChoices.length > 0) {
-      this.isZhouTianActive = true
-      this.awaitingUpgradeSelection = true
-      this.awaitingAscensionSelection = false
-      this.reportRuntimeOutput({
-        type: 'upgrade-requested',
-        choices: zhouTianChoices,
-        deductionCount: this.deductionState.remainingCount,
-        canDeduce: false,
-        isZhouTian: true,
-      })
-      return
-    }
-
-    this.pendingLevelUps = 0
-    this.awaitingUpgradeSelection = false
-  }
-
-  private beginAscensionSelection(choices: readonly AscensionRecipe[]) {
-    if (choices.length === 0) {
-      this.awaitingAscensionSelection = false
-      this.ascensionChoices = []
-      return
-    }
-
-    this.awaitingAscensionSelection = true
-    this.ascensionChoices = choices
-    this.reportRuntimeOutput({ type: 'ascension-requested', choices })
+    this.applyBuildTransition(result)
+    this.reportArtifactBuildDecision()
   }
 
   private updateCamera() {
@@ -2011,7 +1869,7 @@ export class QingShiRidgeScene extends Phaser.Scene implements CombatPresentatio
   }
 
   private getArtifactDamage(baseDamage: number): number {
-    return Math.max(1, Math.round(baseDamage * this.playerDamageMultiplier))
+    return Math.max(1, Math.round(baseDamage * this.build.modifiers.damageMultiplier))
   }
 
   private damageEnemy(index: number, damage: number, impactX = this.player.x, impactY = this.player.y) {
@@ -2225,7 +2083,7 @@ export class QingShiRidgeScene extends Phaser.Scene implements CombatPresentatio
               breachRemainingMs: this.boss.breachRemainingMs,
             }
           : undefined,
-        artifacts: this.inventory.slots.map((slot) => ({
+        artifacts: this.build.inventory.slots.map((slot) => ({
           id: slot.id,
           name: ARTIFACT_DEFINITIONS[slot.id].name,
           level: slot.level,
@@ -2317,10 +2175,10 @@ export class QingShiRidgeScene extends Phaser.Scene implements CombatPresentatio
         artifactId: projectile.artifactId,
       })),
       artifactFields: (() => {
-        const arrayArtifactId: ArtifactId = getArtifactLevel(this.inventory, 'si-xiang-zhen-qi') > 0
+        const arrayArtifactId: ArtifactId = getArtifactLevel(this.build.inventory, 'si-xiang-zhen-qi') > 0
           ? 'si-xiang-zhen-qi'
           : 'zhu-xie-jian-zhen'
-        const arrayLevel = getArtifactLevel(this.inventory, arrayArtifactId)
+        const arrayLevel = getArtifactLevel(this.build.inventory, arrayArtifactId)
         return [
           ...(arrayLevel > 0
             ? [{
