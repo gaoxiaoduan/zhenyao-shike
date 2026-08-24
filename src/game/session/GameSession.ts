@@ -6,6 +6,7 @@ import type { OnboardingStep } from '../domain/onboardingProgress'
 import type { AudioIntent } from '../audio/audioDirector'
 import type { DamageSource, RunResult, RunSummary } from '../domain/runSummary'
 import type { RunArtifactSummary } from '../domain/runSummary'
+import type { BrowserFacts, BrowserFactsAdapter } from '../platform/browserFacts'
 import type { BattleViewport } from '../platform/viewportPolicy'
 
 export type PlatformPauseReason = 'orientation' | 'viewport' | 'visibility' | 'input' | 'window-blur'
@@ -115,6 +116,7 @@ export type PausePresentation = PlatformPauseReason | 'manual' | 'decision' | 'o
 
 export interface GameSessionSnapshot {
   readonly lifecycle: GameSessionLifecycle
+  readonly viewport: BattleViewport
   readonly pause: {
     readonly active: boolean
     readonly presentation: PausePresentation
@@ -136,9 +138,7 @@ export interface GameSession {
   releaseManualPause(): void
   confirmOrientation(): void
   confirmWindowFocus(): void
-  setPlatformPause(reason: PlatformPauseReason, paused: boolean): void
-  setWindowFocused(focused: boolean): void
-  setPageVisible(visible: boolean): void
+  setBrowserFacts(facts: BrowserFacts): void
   setInputSuspended(suspended: boolean): void
   clearInputIntent(): void
   selectInitialArtifact(decisionId: string, artifactId: BaseArtifactId): void
@@ -151,7 +151,6 @@ export interface GameSession {
   skipOnboarding(): void
   setInputIntent(intent: InputIntent): void
   castSpell(): void
-  resize(viewport: BattleViewport): void
   setReducedMotion(reducedMotion: boolean): void
   dispose(): void
 }
@@ -163,6 +162,8 @@ export interface CreateGameSessionOptions {
   readonly viewport: BattleViewport
   readonly renderScale: number
   readonly reducedMotion: boolean
+  readonly compactMode?: boolean
+  readonly browserFacts?: BrowserFactsAdapter
   readonly compactRadar?: boolean
   readonly runSeed?: number
   /** Test-harness clock compression. Product callers should leave this unset. */

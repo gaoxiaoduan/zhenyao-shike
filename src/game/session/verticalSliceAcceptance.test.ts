@@ -14,6 +14,7 @@ import {
   damageWolfKing,
   WOLF_KING_INTRO_DURATION_MS,
 } from '../domain/wolfKingRules'
+import { computeBattleViewport } from '../platform/viewportPolicy'
 import { createGameSessionController, type BattleRuntime } from './GameSessionController'
 
 function expectCompleteBuildDefeatsWolfKing(
@@ -139,16 +140,30 @@ describe('核心切片与构筑验收 (Issue #9)', () => {
 
     const { session } = createGameSessionController(runtime)
 
-    session.setPlatformPause('viewport', true)
+    const standardFacts = {
+      visible: true,
+      focused: true,
+      compactMode: false,
+      viewport: computeBattleViewport({ width: 1280, height: 720, desktop: true }),
+    }
+    session.setBrowserFacts({
+      ...standardFacts,
+      viewport: computeBattleViewport({ width: 900, height: 500, desktop: true }),
+    })
     expect(currentPaused).toBe(true)
 
-    session.setPlatformPause('orientation', true)
+    session.setBrowserFacts({
+      ...standardFacts,
+      viewport: computeBattleViewport({ width: 430, height: 932, desktop: false }),
+    })
     expect(currentPaused).toBe(true)
 
-    session.setPlatformPause('viewport', false)
+    session.setBrowserFacts({
+      ...standardFacts,
+      viewport: computeBattleViewport({ width: 844, height: 390, desktop: false }),
+    })
     expect(currentPaused).toBe(true) // Still paused due to orientation
 
-    session.setPlatformPause('orientation', false)
     session.confirmOrientation()
     expect(currentPaused).toBe(false)
   })

@@ -1,7 +1,8 @@
 import { completeOnboardingStep, createOnboardingProgress, nextOnboardingStep } from '../domain/onboardingProgress'
 import { createInputIntent, type InputIntent } from '../domain/inputIntent'
 import type { BaseArtifactId } from '../domain/initialArtifactSelection'
-import type { BattleViewport } from '../platform/viewportPolicy'
+import type { BrowserFacts, BrowserFactsAdapter } from '../platform/browserFacts'
+import { computeBattleViewport, type BattleViewport } from '../platform/viewportPolicy'
 import type {
   BattleRuntimeOutput,
   GameSession,
@@ -33,6 +34,11 @@ export interface BattleRuntime {
 export interface GameSessionController {
   readonly session: GameSession
   readonly reportRuntimeOutput: (output: BattleRuntimeOutput) => void
+  readonly connectBrowserFacts: (adapter: BrowserFactsAdapter) => void
+}
+
+export interface CreateGameSessionControllerOptions {
+  readonly initialViewport?: BattleViewport
 }
 
 const NOOP_CALLBACKS: GameSessionCallbacks = {
@@ -88,6 +94,7 @@ function freezeRunSummary(summary: Extract<GameSessionResult, { state: 'ended' }
 export function createGameSessionController(
   runtime: BattleRuntime,
   callbacks: Partial<GameSessionCallbacks> = {},
+  options: CreateGameSessionControllerOptions = {},
 ): GameSessionController {
   const sessionCallbacks: GameSessionCallbacks = { ...NOOP_CALLBACKS, ...callbacks }
   const pauseReasons = new Set<SessionPauseReason>()
@@ -98,12 +105,19 @@ export function createGameSessionController(
   let decisionSequence = 0
   let hud = null as GameSessionSnapshot['hud']
   let result: GameSessionResult | null = null
+  let currentViewport = options.initialViewport ?? computeBattleViewport({
+    width: 1280,
+    height: 720,
+    desktop: true,
+  })
   let onboardingProgress = createOnboardingProgress()
   let onboardingSkipped = false
   let lastInputIntent = createInputIntent()
   let lastAudioPauseMode: 'active' | 'choice' | 'full' | undefined
   let transactionDepth = 0
   let publishPending = false
+  let browserFactsSubscription: (() => void) | null = null
+  let browserFactsAdapter: BrowserFactsAdapter | null = null
 
   function nextDecisionId() {
     decisionSequence += 1
@@ -167,6 +181,7 @@ export function createGameSessionController(
     const onboardingStep = onboardingSkipped ? null : nextOnboardingStep(onboardingProgress)
     return Object.freeze({
       lifecycle,
+      viewport: currentViewport,
       pause: Object.freeze({
         active: paused,
         presentation: getPausePresentation(),
@@ -267,15 +282,72 @@ export function createGameSessionController(
     return setPauseReasons([{ reason, active, clearInput }])
   }
 
-  function setOrientationPause(active: boolean): boolean {
-    const wasPaused = pauseReasons.has('orientation')
-    const updates: PauseReasonUpdate[] = [{ reason: 'orientation', active }]
-    if (active) {
+  function areViewportsEqual(left: BattleViewport, right: BattleViewport) {
+    return left.aspectRatio === right.aspectRatio
+      && left.internalWidth === right.internalWidth
+      && left.internalHeight === right.internalHeight
+      && left.compact === right.compact
+      && left.requiresOrientation === right.requiresOrientation
+      && left.requiresLargerWindow === right.requiresLargerWindow
+      && left.hasInformationWings === right.hasInformationWings
+  }
+
+  function applyBrowserFacts(facts: BrowserFacts) {
+    if (disposed || lifecycle !== 'active') {
+      return
+    }
+
+    const viewportChanged = !areViewportsEqual(currentViewport, facts.viewport)
+    const wasOrientationPaused = pauseReasons.has('orientation')
+    if (viewportChanged) {
+      currentViewport = facts.viewport
+      runtime.resize(facts.viewport)
+    }
+
+    const updates: PauseReasonUpdate[] = [
+      { reason: 'orientation', active: facts.viewport.requiresOrientation, clearInput: facts.viewport.requiresOrientation },
+      { reason: 'viewport', active: facts.viewport.requiresLargerWindow, clearInput: facts.viewport.requiresLargerWindow },
+      { reason: 'visibility', active: !facts.visible, clearInput: !facts.visible },
+    ]
+    if (facts.viewport.requiresOrientation) {
       updates.push({ reason: 'orientation-confirmation', active: false })
-    } else if (wasPaused) {
+    } else if (wasOrientationPaused) {
       updates.push({ reason: 'orientation-confirmation', active: true })
     }
-    return setPauseReasons(updates)
+
+    if (!facts.compactMode) {
+      updates.push(
+        { reason: 'window-blur', active: false },
+        { reason: 'window-focus-confirmation', active: false },
+      )
+    } else if (facts.focused) {
+      if (pauseReasons.has('window-blur')) {
+        updates.push(
+          { reason: 'window-blur', active: false },
+          { reason: 'window-focus-confirmation', active: true },
+        )
+      }
+    } else {
+      updates.push(
+        { reason: 'window-focus-confirmation', active: false },
+        { reason: 'window-blur', active: true, clearInput: true },
+      )
+    }
+
+    const pauseChanged = setPauseReasons(updates)
+    if (viewportChanged && !pauseChanged) {
+      publish()
+    }
+  }
+
+  function connectBrowserFacts(adapter: BrowserFactsAdapter) {
+    if (browserFactsAdapter === adapter) {
+      return
+    }
+    browserFactsSubscription?.()
+    browserFactsAdapter?.dispose()
+    browserFactsAdapter = adapter
+    browserFactsSubscription = adapter.subscribe(applyBrowserFacts)
   }
 
   function beginDecision(nextDecision: GameSessionDecision) {
@@ -422,32 +494,8 @@ export function createGameSessionController(
     confirmWindowFocus() {
       setPauseReason('window-focus-confirmation', false)
     },
-    setPlatformPause(reason, pausedByPlatform) {
-      if (reason === 'orientation') {
-        setOrientationPause(pausedByPlatform)
-        return
-      }
-      setPauseReason(reason, pausedByPlatform, pausedByPlatform && (reason === 'visibility' || reason === 'input'))
-    },
-    setWindowFocused(focused) {
-      if (focused) {
-        if (!pauseReasons.has('window-blur')) {
-          return
-        }
-        setPauseReasons([
-          { reason: 'window-blur', active: false },
-          { reason: 'window-focus-confirmation', active: true },
-        ])
-        return
-      }
-
-      setPauseReasons([
-        { reason: 'window-focus-confirmation', active: false },
-        { reason: 'window-blur', active: true, clearInput: true },
-      ])
-    },
-    setPageVisible(visible) {
-      setPauseReason('visibility', !visible, !visible)
+    setBrowserFacts(facts) {
+      applyBrowserFacts(facts)
     },
     setInputSuspended(suspended) {
       setPauseReason('input', suspended, suspended)
@@ -519,6 +567,8 @@ export function createGameSessionController(
         return
       }
       if (pauseReasons.has('manual')
+        || pauseReasons.has('orientation')
+        || pauseReasons.has('viewport')
         || pauseReasons.has('visibility')
         || pauseReasons.has('input')
         || pauseReasons.has('window-blur')
@@ -534,23 +584,6 @@ export function createGameSessionController(
       }
       runtime.castSpell()
     },
-    resize(viewport) {
-      if (disposed || lifecycle !== 'active') {
-        return
-      }
-      runtime.resize(viewport)
-      const wasOrientationPaused = pauseReasons.has('orientation')
-      const updates: PauseReasonUpdate[] = [
-        { reason: 'orientation', active: viewport.requiresOrientation },
-      ]
-      if (viewport.requiresOrientation) {
-        updates.push({ reason: 'orientation-confirmation', active: false })
-      } else if (wasOrientationPaused) {
-        updates.push({ reason: 'orientation-confirmation', active: true })
-      }
-      updates.push({ reason: 'viewport', active: viewport.requiresLargerWindow })
-      setPauseReasons(updates)
-    },
     setReducedMotion(reducedMotion) {
       if (disposed || lifecycle !== 'active') {
         return
@@ -563,6 +596,10 @@ export function createGameSessionController(
       }
       disposed = true
       lifecycle = 'disposed'
+      browserFactsSubscription?.()
+      browserFactsAdapter?.dispose()
+      browserFactsSubscription = null
+      browserFactsAdapter = null
       decision = null
       pauseReasons.clear()
       if (!paused) {
@@ -575,5 +612,5 @@ export function createGameSessionController(
   }
 
   publish()
-  return { session, reportRuntimeOutput }
+  return { session, reportRuntimeOutput, connectBrowserFacts }
 }

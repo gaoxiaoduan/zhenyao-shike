@@ -198,6 +198,17 @@ test('pauses compact mode after window blur and requires explicit resume', async
   await expect(page.getByRole('dialog', { name: '历练暂停' })).toHaveCount(0)
 })
 
+test('keeps the standard run active after an ordinary window blur', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto('/')
+  await page.getByRole('button', { name: '开始青石岭历练' }).click()
+  await page.getByRole('dialog', { name: '选择初始法器' }).getByRole('button').first().click()
+
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')))
+  await expect(page.getByRole('dialog', { name: '历练暂停' })).toHaveCount(0)
+  await expect(page.getByLabel('青石岭战场')).toBeVisible()
+})
+
 test('unlocked 妖王演练 enters the boss directly without the mainline onboarding', async ({ page }) => {
   await seedBrowserSave(page, 'zhenyao-shike.boss-practice.v2', createBossPracticeSave())
   await page.setViewportSize({ width: 1280, height: 720 })

@@ -3,6 +3,8 @@ import { createInputIntent } from '../domain/inputIntent'
 import { createInitialArtifactSelection } from '../domain/initialArtifactSelection'
 import type { UpgradeDraftChoice } from '../domain/artifactInventory'
 import type { AudioIntent } from '../audio/audioDirector'
+import type { BrowserFacts, BrowserFactsAdapter } from '../platform/browserFacts'
+import { computeBattleViewport } from '../platform/viewportPolicy'
 import type { BattleRuntimeOutput, GameSessionEffect, GameSessionSnapshot } from './GameSession'
 import { createGameSessionController, type BattleRuntime } from './GameSessionController'
 
@@ -34,6 +36,37 @@ function createSession(runtime = createRuntime()) {
   return { ...controller, snapshots, effects, runtime }
 }
 
+function createBrowserFactsAdapter(initial: BrowserFacts) {
+  let current = initial
+  let listener: ((facts: BrowserFacts) => void) | null = null
+  const adapter: BrowserFactsAdapter = {
+    getSnapshot: () => current,
+    subscribe: (nextListener) => {
+      listener = nextListener
+      nextListener(current)
+      return () => {
+        listener = null
+      }
+    },
+    setCompactMode: vi.fn(),
+    dispose: vi.fn(),
+  }
+  return {
+    adapter,
+    emit(nextFacts: BrowserFacts) {
+      current = nextFacts
+      listener?.(nextFacts)
+    },
+  }
+}
+
+const standardBrowserFacts: BrowserFacts = {
+  visible: true,
+  focused: true,
+  compactMode: false,
+  viewport: computeBattleViewport({ width: 1280, height: 720, desktop: true }),
+}
+
 const upgradeOutput: BattleRuntimeOutput = {
   type: 'upgrade-requested',
   choices: [
@@ -55,17 +88,74 @@ const upgradeOutput: BattleRuntimeOutput = {
 }
 
 describe('一局会话 external seam', () => {
+  it('通过可替换浏览器事实适配器统一处理失焦、隐藏、尺寸与方向确认', () => {
+    const runtime = createRuntime()
+    const browserFacts = createBrowserFactsAdapter(standardBrowserFacts)
+    const snapshots: GameSessionSnapshot[] = []
+    const controller = createGameSessionController(runtime, {
+      onSnapshot: (snapshot) => snapshots.push(snapshot),
+    }, { initialViewport: standardBrowserFacts.viewport })
+    controller.connectBrowserFacts(browserFacts.adapter)
+
+    browserFacts.emit({
+      ...standardBrowserFacts,
+      compactMode: true,
+      viewport: computeBattleViewport({ width: 800, height: 500, desktop: true, compact: true }),
+    })
+    browserFacts.emit({
+      ...browserFacts.adapter.getSnapshot(),
+      focused: false,
+    })
+
+    expect(snapshots.at(-1)?.pause).toEqual({ active: true, presentation: 'window-blur' })
+    expect(runtime.setInputIntent).toHaveBeenLastCalledWith(createInputIntent())
+
+    browserFacts.emit({ ...browserFacts.adapter.getSnapshot(), focused: true })
+    expect(snapshots.at(-1)?.pause).toEqual({ active: true, presentation: 'window-focus-confirmation' })
+
+    browserFacts.emit({ ...browserFacts.adapter.getSnapshot(), visible: false })
+    expect(snapshots.at(-1)?.pause).toEqual({ active: true, presentation: 'visibility' })
+    browserFacts.emit({ ...browserFacts.adapter.getSnapshot(), visible: true })
+    expect(snapshots.at(-1)?.pause).toEqual({ active: true, presentation: 'window-focus-confirmation' })
+    controller.session.confirmWindowFocus()
+    expect(snapshots.at(-1)?.pause).toEqual({ active: false, presentation: null })
+
+    browserFacts.emit({
+      ...browserFacts.adapter.getSnapshot(),
+      viewport: computeBattleViewport({ width: 430, height: 932, desktop: false, compact: false }),
+    })
+    expect(snapshots.at(-1)?.pause.presentation).toBe('orientation')
+    browserFacts.emit({
+      ...browserFacts.adapter.getSnapshot(),
+      viewport: computeBattleViewport({ width: 844, height: 390, desktop: false, compact: false }),
+    })
+    expect(snapshots.at(-1)?.pause.presentation).toBe('orientation-confirmation')
+    controller.session.confirmOrientation()
+    expect(snapshots.at(-1)?.pause).toEqual({ active: false, presentation: null })
+
+    browserFacts.emit({ ...browserFacts.adapter.getSnapshot(), focused: false, compactMode: false })
+    expect(snapshots.at(-1)?.pause.active).toBe(false)
+    controller.session.dispose()
+    expect(browserFacts.adapter.dispose).toHaveBeenCalledOnce()
+  })
+
   it('只在所有平台暂停事实解除后恢复，并在手动暂停时清空移动意图', () => {
     const { session, snapshots, runtime } = createSession()
     const intent = createInputIntent({ moveX: 1 })
 
     session.setInputIntent(intent)
     session.requestManualPause()
-    session.setPlatformPause('orientation', true)
+    session.setBrowserFacts({
+      ...standardBrowserFacts,
+      viewport: computeBattleViewport({ width: 430, height: 932, desktop: false }),
+    })
     session.releaseManualPause()
 
     expect(snapshots.at(-1)?.pause).toEqual({ active: true, presentation: 'orientation' })
-    session.setPlatformPause('orientation', false)
+    session.setBrowserFacts({
+      ...standardBrowserFacts,
+      viewport: computeBattleViewport({ width: 844, height: 390, desktop: false }),
+    })
 
     expect(snapshots.at(-1)?.pause).toEqual({ active: true, presentation: 'orientation-confirmation' })
     session.confirmOrientation()
@@ -79,14 +169,19 @@ describe('一局会话 external seam', () => {
     const { session, snapshots, runtime } = createSession()
 
     session.setInputIntent(createInputIntent({ moveX: 1 }))
-    session.setWindowFocused(false)
+    const compactFacts = {
+      ...standardBrowserFacts,
+      compactMode: true,
+      viewport: computeBattleViewport({ width: 800, height: 500, desktop: true, compact: true }),
+    }
+    session.setBrowserFacts({ ...compactFacts, focused: false })
 
     expect(snapshots.at(-1)?.pause).toEqual({ active: true, presentation: 'window-blur' })
     expect(runtime.setInputIntent).toHaveBeenLastCalledWith(createInputIntent())
     expect(runtime.setPaused).toHaveBeenCalledOnce()
     expect(runtime.setPaused).toHaveBeenCalledWith(true)
 
-    session.setWindowFocused(true)
+    session.setBrowserFacts({ ...compactFacts, focused: true })
     expect(snapshots.at(-1)?.pause).toEqual({ active: true, presentation: 'window-focus-confirmation' })
     expect(runtime.setPaused).toHaveBeenCalledOnce()
 
@@ -416,10 +511,14 @@ describe('一局会话 external seam', () => {
       throw new Error('expected battlefield event decision')
     }
 
-    session.setPageVisible(false)
+    const visibleFacts = {
+      ...standardBrowserFacts,
+      viewport: standardBrowserFacts.viewport,
+    }
+    session.setBrowserFacts({ ...visibleFacts, visible: false })
     session.confirmBattlefieldEvent(decision.id)
     expect(snapshots.at(-1)?.pause).toEqual({ active: true, presentation: 'visibility' })
-    session.setPageVisible(true)
+    session.setBrowserFacts(visibleFacts)
     expect(snapshots.at(-1)?.pause.active).toBe(false)
   })
 
@@ -457,9 +556,12 @@ describe('一局会话 external seam', () => {
       hasInformationWings: false,
     }
 
-    session.resize(tooSmallPortrait)
+    session.setBrowserFacts({ ...standardBrowserFacts, viewport: tooSmallPortrait })
     session.setInputSuspended(true)
-    session.resize({ ...tooSmallPortrait, requiresOrientation: false, requiresLargerWindow: false })
+    session.setBrowserFacts({
+      ...standardBrowserFacts,
+      viewport: { ...tooSmallPortrait, requiresOrientation: false, requiresLargerWindow: false },
+    })
     expect(snapshots.at(-1)?.pause.presentation).toBe('input')
     session.setInputSuspended(false)
     session.confirmOrientation()
@@ -472,27 +574,31 @@ describe('一局会话 external seam', () => {
   it('在方向暂停切换为窗口尺寸暂停时不短暂恢复 runtime', () => {
     const { session, snapshots, runtime } = createSession()
 
-    session.resize({
-      aspectRatio: 1,
-      internalWidth: 540,
-      internalHeight: 960,
-      requiresOrientation: true,
-      requiresLargerWindow: false,
-      hasInformationWings: false,
+    session.setBrowserFacts({
+      ...standardBrowserFacts,
+      viewport: {
+        aspectRatio: 1,
+        internalWidth: 540,
+        internalHeight: 960,
+        requiresOrientation: true,
+        requiresLargerWindow: false,
+        hasInformationWings: false,
+      },
     })
-    session.resize({
+    const landscapeTooSmall = {
       aspectRatio: 2,
       internalWidth: 960,
       internalHeight: 540,
       requiresOrientation: false,
       requiresLargerWindow: true,
       hasInformationWings: false,
-    })
+    }
+    session.setBrowserFacts({ ...standardBrowserFacts, viewport: landscapeTooSmall })
 
     expect(runtime.setPaused).toHaveBeenCalledOnce()
     expect(runtime.setPaused).toHaveBeenCalledWith(true)
     expect(snapshots.at(-1)?.pause.presentation).toBe('viewport')
-    session.setPlatformPause('viewport', false)
+    session.setBrowserFacts({ ...standardBrowserFacts, viewport: { ...landscapeTooSmall, requiresLargerWindow: false } })
     expect(snapshots.at(-1)?.pause.presentation).toBe('orientation-confirmation')
     session.confirmOrientation()
     expect(runtime.setPaused).toHaveBeenNthCalledWith(2, false)

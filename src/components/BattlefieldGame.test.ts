@@ -4,6 +4,8 @@ import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { createArtifactInventory, generateUpgradeChoices } from '../game/domain/artifactInventory'
+import type { BrowserFactsAdapter } from '../game/platform/browserFacts'
+import { computeBattleViewport } from '../game/platform/viewportPolicy'
 import { DEFAULT_GAME_SETTINGS } from '../game/settings/gameSettings'
 import type { GameSessionEffect, GameSessionSnapshot } from '../game/session/GameSession'
 import BattlefieldGame from './BattlefieldGame.vue'
@@ -12,14 +14,12 @@ import BattleTouchControls from './BattleTouchControls.vue'
 const battleHarness = vi.hoisted(() => ({
   onSnapshot: undefined as ((snapshot: GameSessionSnapshot) => void) | undefined,
   onEffect: undefined as ((effect: GameSessionEffect) => void) | undefined,
+  browserFacts: undefined as BrowserFactsAdapter | undefined,
   session: {
     requestManualPause: vi.fn(),
     releaseManualPause: vi.fn(),
     confirmOrientation: vi.fn(),
     confirmWindowFocus: vi.fn(),
-    setPlatformPause: vi.fn(),
-    setWindowFocused: vi.fn(),
-    setPageVisible: vi.fn(),
     setInputSuspended: vi.fn(),
     clearInputIntent: vi.fn(),
     selectInitialArtifact: vi.fn(),
@@ -32,7 +32,6 @@ const battleHarness = vi.hoisted(() => ({
     skipOnboarding: vi.fn(),
     setInputIntent: vi.fn(),
     castSpell: vi.fn(),
-    resize: vi.fn(),
     setReducedMotion: vi.fn(),
     dispose: vi.fn(),
   },
@@ -42,12 +41,16 @@ vi.mock('../game/phaser/createBattleSession', () => ({
   createBattleSession: (options: {
     onSnapshot: (snapshot: GameSessionSnapshot) => void
     onEffect: (effect: GameSessionEffect) => void
+    browserFacts: BrowserFactsAdapter
   }) => {
     battleHarness.onSnapshot = options.onSnapshot
     battleHarness.onEffect = options.onEffect
+    battleHarness.browserFacts = options.browserFacts
     return battleHarness.session
   },
 }))
+
+const testViewport = computeBattleViewport({ width: 1280, height: 720, desktop: true })
 
 describe('BattlefieldGame input adapter', () => {
   beforeEach(() => {
@@ -61,7 +64,11 @@ describe('BattlefieldGame input adapter', () => {
     }
   })
 
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(() => {
+    battleHarness.browserFacts?.dispose()
+    battleHarness.browserFacts = undefined
+    vi.unstubAllGlobals()
+  })
 
   it('casts while a direction is held without replacing that movement', async () => {
     const wrapper = mount(BattlefieldGame, {
@@ -79,22 +86,19 @@ describe('BattlefieldGame input adapter', () => {
     wrapper.unmount()
   })
 
-  it('clears input on blur, page hiding, and manual pause', () => {
+  it('lets the browser facts adapter own blur and page visibility while manual pause still clears input', () => {
     const wrapper = mount(BattlefieldGame, {
       props: { settings: DEFAULT_GAME_SETTINGS, showOnboarding: false },
     })
-    const hidden = vi.spyOn(document, 'hidden', 'get')
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w' }))
     window.dispatchEvent(new Event('blur'))
-    hidden.mockReturnValue(true)
-    document.dispatchEvent(new Event('visibilitychange'))
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'escape' }))
 
-    expect(battleHarness.session.clearInputIntent).toHaveBeenCalledTimes(3)
+    expect(battleHarness.browserFacts?.getSnapshot().focused).toBe(false)
+    expect(battleHarness.session.clearInputIntent).toHaveBeenCalledOnce()
     expect(battleHarness.session.requestManualPause).toHaveBeenCalledOnce()
 
-    hidden.mockRestore()
     wrapper.unmount()
   })
 
@@ -120,6 +124,7 @@ describe('BattlefieldGame input adapter', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w' }))
     battleHarness.onSnapshot?.({
       lifecycle: 'active',
+      viewport: testViewport,
       pause: { active: true, presentation: 'orientation' },
       decision: null,
       hud: null,
@@ -139,6 +144,7 @@ describe('BattlefieldGame input adapter', () => {
 
     battleHarness.onSnapshot?.({
       lifecycle: 'active',
+      viewport: testViewport,
       pause: { active: true, presentation: 'manual' },
       decision: null,
       hud: null,
@@ -163,6 +169,7 @@ describe('BattlefieldGame input adapter', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w' }))
     battleHarness.onSnapshot?.({
       lifecycle: 'active',
+      viewport: testViewport,
       pause: { active: true, presentation: 'decision' },
       decision: {
         type: 'upgrade',
@@ -193,6 +200,7 @@ describe('BattlefieldGame input adapter', () => {
 
     battleHarness.onSnapshot?.({
       lifecycle: 'active',
+      viewport: testViewport,
       pause: { active: true, presentation: 'decision' },
       decision: {
         type: 'battlefield-event',
@@ -226,6 +234,7 @@ describe('BattlefieldGame input adapter', () => {
 
     battleHarness.onSnapshot?.({
       lifecycle: 'active',
+      viewport: testViewport,
       pause: { active: true, presentation: 'orientation-confirmation' },
       decision: null,
       hud: null,
@@ -241,16 +250,14 @@ describe('BattlefieldGame input adapter', () => {
     wrapper.unmount()
   })
 
-  it('pauses compact mode on window blur and resumes only after confirmation', async () => {
+  it('renders the compact-mode focus confirmation and resumes only after explicit confirmation', async () => {
     const wrapper = mount(BattlefieldGame, {
       props: { settings: DEFAULT_GAME_SETTINGS, showOnboarding: false, compactMode: true },
     })
 
-    window.dispatchEvent(new Event('blur'))
-    expect(battleHarness.session.setWindowFocused).toHaveBeenCalledWith(false)
-
     battleHarness.onSnapshot?.({
       lifecycle: 'active',
+      viewport: testViewport,
       pause: { active: true, presentation: 'window-focus-confirmation' },
       decision: null,
       hud: null,
@@ -263,9 +270,6 @@ describe('BattlefieldGame input adapter', () => {
     expect(wrapper.get('[aria-label="历练暂停"]').text()).toContain('窗口已恢复')
     await wrapper.get('[aria-label="历练暂停"] button').trigger('click')
     expect(battleHarness.session.confirmWindowFocus).toHaveBeenCalledOnce()
-
-    window.dispatchEvent(new Event('focus'))
-    expect(battleHarness.session.setWindowFocused).toHaveBeenCalledWith(true)
     wrapper.unmount()
   })
 
@@ -275,7 +279,7 @@ describe('BattlefieldGame input adapter', () => {
       props: { settings: DEFAULT_GAME_SETTINGS, showOnboarding: false },
     })
 
-    expect(battleHarness.session.setPageVisible).toHaveBeenCalledWith(false)
+    expect(battleHarness.browserFacts?.getSnapshot().visible).toBe(false)
     wrapper.unmount()
     hidden.mockRestore()
   })

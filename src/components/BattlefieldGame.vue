@@ -9,7 +9,8 @@ import type { BaseArtifact } from '../game/domain/initialArtifactSelection'
 import { createBattleSession } from '../game/phaser/createBattleSession'
 import type { AudioIntent } from '../game/audio/audioDirector'
 import type { DamageSource, RunSummary } from '../game/domain/runSummary'
-import { computeBattleViewport, computeRenderScale } from '../game/platform/viewportPolicy'
+import { createBrowserFactsAdapter } from '../game/platform/browserFacts'
+import { computeRenderScale } from '../game/platform/viewportPolicy'
 import type { GameSettings } from '../game/settings/gameSettings'
 import type {
   BattleHudSnapshot,
@@ -52,15 +53,12 @@ const playerInput = createPlayerIntentModule({
   getKeyBindings: () => props.settings.keyBindings,
 })
 const inputResetRevision = shallowRef(0)
-const desktopMedia = window.matchMedia('(hover: hover) and (pointer: fine)')
-const viewport = shallowRef(computeBattleViewport({
-  width: window.innerWidth,
-  height: window.innerHeight,
-  desktop: desktopMedia.matches,
-  compact: props.compactMode,
-}))
+const browserFacts = createBrowserFactsAdapter({ compactMode: props.compactMode })
+const viewport = shallowRef(browserFacts.getSnapshot().viewport)
+const isDesktop = computed(() => props.compactMode || !viewport.value.compact)
 const emptySnapshot: GameSessionSnapshot = {
   lifecycle: 'active',
+  viewport: viewport.value,
   pause: { active: false, presentation: null },
   decision: null,
   hud: null,
@@ -175,14 +173,15 @@ watch(() => props.inputSuspended, (suspended) => {
 watch(() => props.settings.reducedMotion, (reducedMotion) => {
   session.value?.setReducedMotion(reducedMotion)
 })
-watch(() => props.compactMode, () => {
-  syncViewport()
+watch(() => props.compactMode, (compactMode) => {
+  browserFacts.setCompactMode(compactMode)
 })
 
 function handleSessionSnapshot(snapshot: GameSessionSnapshot) {
   const previousPausePresentation = sessionSnapshot.value.pause.presentation
   const wasOnboardingCompleted = sessionSnapshot.value.onboardingCompleted
   sessionSnapshot.value = snapshot
+  viewport.value = snapshot.viewport
   if (shouldResetInputForPause(snapshot.pause.presentation)
     && snapshot.pause.presentation !== previousPausePresentation) {
     resetPlayerInput()
@@ -273,7 +272,10 @@ function dispatchPlayerInput(input: PlayerInput, event?: Event) {
 }
 
 function shouldResetInputForPause(presentation: GameSessionSnapshot['pause']['presentation']) {
-  return presentation === 'orientation' || presentation === 'viewport'
+  return presentation === 'orientation'
+    || presentation === 'viewport'
+    || presentation === 'visibility'
+    || presentation === 'window-blur'
 }
 
 function resetPlayerInput() {
@@ -334,37 +336,6 @@ function continueRun() {
   }
 }
 
-function syncViewport() {
-  const nextViewport = computeBattleViewport({
-    width: window.innerWidth,
-    height: window.innerHeight,
-    desktop: desktopMedia.matches,
-    compact: props.compactMode,
-  })
-  viewport.value = nextViewport
-  session.value?.resize(nextViewport)
-}
-
-function syncVisibility() {
-  if (document.hidden) {
-    resetPlayerInput()
-  }
-  session.value?.setPageVisible(!document.hidden)
-}
-
-function handleWindowBlur() {
-  resetPlayerInput()
-  if (props.compactMode) {
-    session.value?.setWindowFocused(false)
-  }
-}
-
-function handleWindowFocus() {
-  if (props.compactMode) {
-    session.value?.setWindowFocused(true)
-  }
-}
-
 function handleKeyDown(event: KeyboardEvent) {
   if (props.inputSuspended) {
     return
@@ -387,13 +358,15 @@ onMounted(() => {
     onSnapshot: handleSessionSnapshot,
     onEffect: handleSessionEffect,
     viewport: viewport.value,
+    compactMode: props.compactMode,
+    browserFacts,
     renderScale: computeRenderScale({
       quality: props.settings.quality,
       devicePixelRatio: window.devicePixelRatio,
-      desktop: desktopMedia.matches,
+      desktop: isDesktop.value,
     }),
     reducedMotion: props.settings.reducedMotion,
-    compactRadar: !desktopMedia.matches || props.compactMode,
+    compactRadar: !isDesktop.value || props.compactMode,
     runSeed: Date.now(),
     elapsedTimeScale: e2eTimeScale,
     onInstrumentation: e2eTimeScale > 1 ? recordE2eInstrumentation : undefined,
@@ -401,25 +374,13 @@ onMounted(() => {
     practiceMode: props.practiceMode,
   })
   session.value.setInputSuspended(props.inputSuspended)
-  window.addEventListener('resize', syncViewport)
-  window.addEventListener('blur', handleWindowBlur)
-  window.addEventListener('focus', handleWindowFocus)
   window.addEventListener('keydown', handleKeyDown)
   window.addEventListener('keyup', handleKeyUp)
-  document.addEventListener('visibilitychange', syncVisibility)
-  desktopMedia.addEventListener('change', syncViewport)
-  syncViewport()
-  syncVisibility()
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', syncViewport)
-  window.removeEventListener('blur', handleWindowBlur)
-  window.removeEventListener('focus', handleWindowFocus)
   window.removeEventListener('keydown', handleKeyDown)
   window.removeEventListener('keyup', handleKeyUp)
-  document.removeEventListener('visibilitychange', syncVisibility)
-  desktopMedia.removeEventListener('change', syncViewport)
   session.value?.dispose()
 })
 </script>
@@ -448,7 +409,7 @@ onUnmounted(() => {
         全屏
       </button>
       <button
-        v-if="desktopMedia.matches || props.compactMode"
+        v-if="isDesktop"
         class="battlefield__tool-button"
         type="button"
         :aria-label="props.compactMode ? '切换标准布局' : '切换小窗布局'"

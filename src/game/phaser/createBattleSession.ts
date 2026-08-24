@@ -130,6 +130,7 @@ import type {
   CreateGameSessionOptions,
   BattleRuntimeOutput,
 } from '../session/GameSession'
+import { createBrowserFactsAdapter } from '../platform/browserFacts'
 import { createGameSessionController, type BattleRuntime } from '../session/GameSessionController'
 
 const WORLD_SIZE = 2048
@@ -3137,6 +3138,9 @@ export function createBattleRuntimeAdapter(
 }
 
 export function createBattleSession(options: CreateGameSessionOptions) {
+  const browserFacts = options.browserFacts ?? createBrowserFactsAdapter({
+    compactMode: options.compactMode ?? false,
+  })
   let reportRuntimeOutput: (output: BattleRuntimeOutput) => void = () => undefined
   const scene = new QingShiRidgeScene(
     (output) => reportRuntimeOutput(output),
@@ -3162,6 +3166,8 @@ export function createBattleSession(options: CreateGameSessionOptions) {
   const controller = createGameSessionController(runtime, {
     onSnapshot: options.onSnapshot,
     onEffect: options.onEffect,
+  }, {
+    initialViewport: options.viewport,
   })
   reportRuntimeOutput = controller.reportRuntimeOutput
   game = new Phaser.Game({
@@ -3180,6 +3186,7 @@ export function createBattleSession(options: CreateGameSessionOptions) {
       autoRound: true,
     },
   })
+  controller.connectBrowserFacts(browserFacts)
 
   return controller.session
 }
