@@ -5,6 +5,8 @@ import {
   resolveCombatPresentationCheckpoint,
 } from './combatPresentationAcceptance'
 import {
+  createRecordingCombatPresentationAdapter,
+  resolveCombatPresentationFrame,
   resolveCombatVisualSignature,
   resolveArtifactVisualSignature,
   resolveBossPresentation,
@@ -29,8 +31,7 @@ describe('semantic combat presentation', () => {
     expect(presentation.pose).toBe('windup')
     expect(presentation.telegraph).toBe('charge-lane')
     expect(presentation.silhouette).toBe('boar-demon')
-    expect(presentation.textureKey).toBe('qingshi-common-actors')
-    expect(presentation.frame).toBe(4)
+    expect(presentation.animationStep).toBe(0)
     expect(presentation.scale).toBeLessThan(1)
 
     const walkingFrame = resolveEnemyPresentation({
@@ -45,7 +46,7 @@ describe('semantic combat presentation', () => {
       elapsedMs: 121,
       reducedMotion: false,
     })
-    expect(walkingFrame.frame).toBe(1)
+    expect(walkingFrame.animationStep).toBe(1)
   })
 
   it('gives an elite miss a distinct vulnerable silhouette without changing its lineage', () => {
@@ -67,8 +68,7 @@ describe('semantic combat presentation', () => {
     expect(presentation.isVulnerable).toBe(true)
     expect(presentation.accentColor).toBe(0xfbbf24)
     expect(presentation.flipX).toBe(true)
-    expect(presentation.textureKey).toBe('qingshi-common-actors')
-    expect(presentation.frame).toBe(39)
+    expect(presentation.animationStep).toBe(1)
   })
 
   it('cycles an elite pounce through ten readable pixel poses', () => {
@@ -97,8 +97,8 @@ describe('semantic combat presentation', () => {
       reducedMotion: false,
     })
 
-    expect(first.frame).toBe(30)
-    expect(last.frame).toBe(39)
+    expect(first.animationStep).toBe(0)
+    expect(last.animationStep).toBe(9)
   })
 
   it('keeps moon shadows visually separate from ordinary wood wolves', () => {
@@ -116,8 +116,7 @@ describe('semantic combat presentation', () => {
     })
 
     expect(presentation.silhouette).toBe('moon-shadow')
-    expect(presentation.textureKey).toBe('qingshi-combat-actors')
-    expect(presentation.frame).toBe(0)
+    expect(presentation.animationStep).toBe(0)
     expect(presentation.tint).toBe(0x2e1065)
     expect(presentation.telegraph).toBe('moon-shadow')
     expect(presentation.bob).toBe(0)
@@ -144,8 +143,7 @@ describe('semantic combat presentation', () => {
     })
 
     expect(enraged.halo).toBe('cracked-moon')
-    expect(enraged.textureKey).toBe('qingshi-combat-actors')
-    expect(enraged.frame).toBe(11)
+    expect(enraged.animationStep).toBe(3)
     expect(enraged.shadowSplit).toBe(true)
     expect(enraged.telegraph).toBe('assault-lane')
     expect(breach.halo).toBe('breach-open')
@@ -170,7 +168,7 @@ describe('semantic combat presentation', () => {
       elapsedMs: 240,
       reducedMotion: false,
     })
-    expect(bossIdleLater.frame).not.toBe(bossIdleStart.frame)
+    expect(bossIdleLater.animationStep).not.toBe(bossIdleStart.animationStep)
   })
 
   it('maps every implemented artifact to a source motif and a distinct macro shape', () => {
@@ -218,5 +216,210 @@ describe('semantic combat presentation', () => {
     expect(resolveCombatPresentationCheckpoint(30_000)?.id).toBe('opening-00-30')
     expect(resolveCombatPresentationCheckpoint(510_000)?.id).toBe('density-08-30')
     expect(resolveCombatPresentationCheckpoint(600_000)?.id).toBe('boss-10-00')
+  })
+
+  it('publishes one semantic frame that a Phaser or recording adapter can consume', () => {
+    const frame = resolveCombatPresentationFrame({
+      elapsedMs: 240,
+      reducedMotion: false,
+      player: {
+        x: 100,
+        y: 120,
+        health: 72,
+        maxHealth: 100,
+        facingX: 1,
+        facingY: 0,
+        isMoving: true,
+        hitFlashMs: 0,
+        hitSparkMs: 0,
+        castPoseMs: 0,
+        downed: false,
+        stopBounceRemainingMs: 0,
+        shieldRemainingMs: 0,
+      },
+      enemies: [{
+        x: 180,
+        y: 120,
+        directionX: -1,
+        directionY: 0,
+        radius: 22,
+        health: 40,
+        maxHealth: 60,
+        isElite: false,
+        input: {
+          id: 'qing-shi-ridge-boar-demon',
+          isElite: false,
+          isMoonShadow: false,
+          action: 'windup',
+          actionRemainingMs: 500,
+          recoveryIsVulnerable: false,
+          hitFlashMs: 0,
+          facingX: -1,
+        },
+      }],
+      boss: {
+        x: 300,
+        y: 120,
+        radius: 38,
+        health: 12_000,
+        maxHealth: 30_000,
+        chargeDirectionX: -1,
+        chargeDirectionY: 0,
+        howlDirectionX: 1,
+        howlDirectionY: 0,
+        howlProgress: 0,
+        input: {
+          phase: 'enraged',
+          attack: 'assault-warning',
+          introRemainingMs: 0,
+          howlRemainingMs: 0,
+          breachRemainingMs: 0,
+          impactRemainingMs: 0,
+        },
+      },
+      projectiles: [{
+        x: 140,
+        y: 120,
+        velocityX: 300,
+        velocityY: 0,
+        artifactId: 'zhu-xie-jian-zhen',
+      }],
+      artifactFields: [{
+        kind: 'array',
+        artifactId: 'zhu-xie-jian-zhen',
+        x: 100,
+        y: 120,
+        radius: 180,
+        rotation: 0.8,
+        pulseRemainingMs: 80,
+        pulseDurationMs: 320,
+      }],
+      enemyProjectiles: [{ x: 220, y: 120, radius: 8 }],
+      spell: {
+        shieldRemainingMs: 1_200,
+        castVisualRemainingMs: 0,
+        impactPulseRemainingMs: 0,
+        endVisualRemainingMs: 0,
+      },
+      bursts: [{
+        kind: 'hit',
+        x: 180,
+        y: 120,
+        color: 0xf59e0b,
+        remainingMs: 60,
+        durationMs: 120,
+        radius: 30,
+      }],
+    })
+    const recorder = createRecordingCombatPresentationAdapter()
+
+    recorder.present(frame)
+
+    expect(frame.player.presentation.pose).toBe('walk')
+    expect(frame.enemies[0]?.presentation.telegraph).toBe('charge-lane')
+    expect(frame.boss?.presentation.halo).toBe('cracked-moon')
+    expect(frame.projectiles[0]?.presentation.macroShape).toBe('floating-sword-rain')
+    expect(frame.artifactFields[0]?.kind).toBe('array')
+    expect(frame.enemyProjectiles).toHaveLength(1)
+    expect(frame.spell.active).toBe(true)
+    expect(frame.feedback[0]?.kind).toBe('hit')
+    expect(recorder.frames).toHaveLength(1)
+    expect(recorder.frames[0]?.boss?.presentation.telegraph).toBe('assault-lane')
+  })
+
+  it('keeps threat semantics while reducing motion intensity', () => {
+    const frame = resolveCombatPresentationFrame({
+      elapsedMs: 240,
+      reducedMotion: true,
+      player: {
+        x: 100,
+        y: 120,
+        health: 72,
+        maxHealth: 100,
+        facingX: 1,
+        facingY: 0,
+        isMoving: true,
+        hitFlashMs: 80,
+        hitSparkMs: 220,
+        castPoseMs: 0,
+        downed: false,
+        stopBounceRemainingMs: 0,
+        shieldRemainingMs: 1_200,
+      },
+      enemies: [{
+        x: 180,
+        y: 120,
+        directionX: -1,
+        directionY: 0,
+        radius: 22,
+        health: 40,
+        maxHealth: 60,
+        isElite: true,
+        input: {
+          id: 'qing-shi-ridge-elite-wolf',
+          isElite: true,
+          isMoonShadow: false,
+          action: 'windup',
+          actionRemainingMs: 500,
+          recoveryIsVulnerable: false,
+          hitFlashMs: 0,
+          facingX: -1,
+        },
+      }],
+      boss: {
+        x: 300,
+        y: 120,
+        radius: 38,
+        health: 12_000,
+        maxHealth: 30_000,
+        chargeDirectionX: -1,
+        chargeDirectionY: 0,
+        howlDirectionX: 1,
+        howlDirectionY: 0,
+        howlProgress: 0.5,
+        input: {
+          phase: 'enraged',
+          attack: 'assault-warning',
+          introRemainingMs: 0,
+          howlRemainingMs: 1_200,
+          breachRemainingMs: 0,
+          impactRemainingMs: 120,
+        },
+      },
+      projectiles: [{
+        x: 140,
+        y: 120,
+        velocityX: 300,
+        velocityY: 0,
+        artifactId: 'liu-guang-jian-yi',
+      }],
+      artifactFields: [{
+        kind: 'thunder-impact',
+        artifactId: 'jiu-xiao-lei-zhen',
+        x: 160,
+        y: 120,
+        radius: 60,
+        remainingMs: 100,
+        durationMs: 250,
+      }],
+      enemyProjectiles: [{ x: 220, y: 120, radius: 8 }],
+      spell: {
+        shieldRemainingMs: 1_200,
+        castVisualRemainingMs: 0,
+        impactPulseRemainingMs: 0,
+        endVisualRemainingMs: 0,
+      },
+      bursts: [],
+    })
+
+    expect(frame.player.presentation.pose).toBe('hit')
+    expect(frame.player.presentation.bob).toBe(0)
+    expect(frame.enemies[0]?.presentation.telegraph).toBe('charge-lane')
+    expect(frame.boss?.presentation.telegraph).toBe('howl-sector')
+    expect(frame.boss?.presentation.shake).toBe(0)
+    expect(frame.projectiles[0]?.presentation.hasTrail).toBe(false)
+    expect(frame.artifactFields[0]?.kind).toBe('thunder-impact')
+    expect(frame.spell.active).toBe(true)
+    expect(frame.spell.angle).toBe(0)
   })
 })

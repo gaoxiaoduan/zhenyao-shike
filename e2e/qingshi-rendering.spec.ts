@@ -2,8 +2,6 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { expect, test } from '@playwright/test'
 
-const presentationCaptureEnabled = process.env.RUN_PRESENTATION_CAPTURE === '1'
-
 test('keeps the fixed-seed opening battlefield free of opaque black render blocks', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 720 })
   await page.goto('/?e2e-time=30')
@@ -16,10 +14,13 @@ test('keeps the fixed-seed opening battlefield free of opaque black render block
     async () => {
       await page.keyboard.press('1')
       await page.keyboard.press('Space')
-      return battlefield.getAttribute('data-presentation-checkpoint')
+      const checkpoint = await battlefield.getAttribute('data-presentation-checkpoint')
+      const artifactShapes = await battlefield.getAttribute('data-presentation-artifact-shapes')
+      return checkpoint === 'surge-02-00' && Boolean(artifactShapes)
     },
     { timeout: 10_000, intervals: [100] },
-  ).toBe('surge-02-00')
+  ).toBe(true)
+  await expect(battlefield).toHaveAttribute('data-presentation-player-pose', /.+/)
 
   const canvas = page.locator('canvas').first()
   const screenshotPath = `/private/tmp/qingshi-rendering-${testInfo.project.name}.png`
@@ -67,8 +68,6 @@ test('keeps the fixed-seed opening battlefield free of opaque black render block
 })
 
 test('captures the fixed-seed presentation checkpoint states', async ({ page }, testInfo) => {
-  test.skip(!presentationCaptureEnabled, '仅在 RUN_PRESENTATION_CAPTURE=1 时生成固定种子检查点截图')
-
   const evidenceDir = path.resolve(
     process.env.PRESENTATION_EVIDENCE_DIR ?? testInfo.outputDir,
   )
@@ -98,6 +97,10 @@ test('captures the fixed-seed presentation checkpoint states', async ({ page }, 
       { timeout: 20_000, intervals: [100] },
     ).toBe(checkpoint)
     snapshots[id] = await page.getByLabel('战斗信息').innerText()
+    await expect(battlefield).toHaveAttribute('data-presentation-player-pose', /.+/)
+    if (id === 'boss') {
+      await expect(battlefield).toHaveAttribute('data-presentation-boss-halo', /.+/)
+    }
     await page.screenshot({ path: path.join(evidenceDir, `qingshi-ridge-${id}.png`) })
   }
 

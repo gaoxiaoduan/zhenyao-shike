@@ -29,8 +29,6 @@ export interface EnemyPresentationInput {
 }
 
 export interface EnemyPresentation {
-  readonly textureKey: 'qingshi-common-actors' | 'qingshi-combat-actors'
-  readonly frame: number
   readonly silhouette: EnemyVisualSilhouette
   readonly pose: EnemyVisualPose
   readonly telegraph: EnemyTelegraph
@@ -42,6 +40,7 @@ export interface EnemyPresentation {
   readonly flipX: boolean
   readonly alpha: number
   readonly isVulnerable: boolean
+  readonly animationStep: number
 }
 
 const ENEMY_SILHOUETTES: Readonly<Record<EnemyVisualSilhouette, {
@@ -54,35 +53,6 @@ const ENEMY_SILHOUETTES: Readonly<Record<EnemyVisualSilhouette, {
   'mist-moth': { accentColor: 0xc4b5fd, baseScale: 0.96, tint: null },
   'elite-wolf': { accentColor: 0xfbbf24, baseScale: 1.14, tint: null },
   'moon-shadow': { accentColor: 0xc4b5fd, baseScale: 0.92, tint: 0x2e1065 },
-}
-
-const COMMON_ACTOR_FRAME_START: Readonly<Record<Exclude<EnemyVisualSilhouette, 'moon-shadow'>, number>> = {
-  'boar-demon': 0,
-  'wood-wolf': 10,
-  'mist-moth': 20,
-  'elite-wolf': 30,
-}
-
-function commonActorPoseFrame(
-  silhouette: Exclude<EnemyVisualSilhouette, 'moon-shadow'>,
-  pose: EnemyVisualPose,
-  elapsedMs: number,
-  reducedMotion: boolean,
-) {
-  const animationStep = reducedMotion ? 0 : Math.floor(Math.max(0, elapsedMs) / 120)
-  if (silhouette === 'elite-wolf' && pose === 'attack') {
-    return animationStep % 10
-  }
-  if (pose === 'approach') {
-    return animationStep % 4
-  }
-  if (pose === 'windup') {
-    return 4 + animationStep % 2
-  }
-  if (pose === 'attack') {
-    return 6 + animationStep % 2
-  }
-  return 8 + animationStep % 2
 }
 
 function enemySilhouette(input: EnemyPresentationInput): EnemyVisualSilhouette {
@@ -130,9 +100,7 @@ export function resolveEnemyPresentation(input: EnemyPresentationInput): EnemyPr
         : input.action === 'recover'
           ? 'recover'
           : 'approach'
-  const commonPoseFrame = silhouette === 'moon-shadow'
-    ? 0
-    : commonActorPoseFrame(silhouette, pose, input.elapsedMs, input.reducedMotion)
+  const animationStep = input.reducedMotion ? 0 : Math.floor(Math.max(0, input.elapsedMs) / 120)
   const isVulnerable = input.recoveryIsVulnerable && input.action === 'recover'
   const telegraph: EnemyTelegraph = isVulnerable
     ? 'vulnerable-crack'
@@ -145,7 +113,7 @@ export function resolveEnemyPresentation(input: EnemyPresentationInput): EnemyPr
           : role === 'pursuer-flanker'
             ? 'flank'
             : 'none'
-  const dynamicMotion = input.reducedMotion ? 0 : Math.sin(input.elapsedMs / 90 + commonPoseFrame)
+  const dynamicMotion = input.reducedMotion ? 0 : Math.sin(input.elapsedMs / 90 + animationStep)
   const poseScale = input.reducedMotion
     ? 1
     : pose === 'windup'
@@ -166,19 +134,7 @@ export function resolveEnemyPresentation(input: EnemyPresentationInput): EnemyPr
         : pose === 'recover' && isVulnerable
           ? (input.facingX < 0 ? -1 : 1) * -9
           : 0
-  const frame = silhouette === 'moon-shadow'
-    ? pose === 'windup'
-      ? 1
-      : pose === 'attack'
-        ? 2
-        : pose === 'recover'
-          ? 3
-          : 0
-    : COMMON_ACTOR_FRAME_START[silhouette] + commonPoseFrame
-
   return {
-    textureKey: silhouette === 'moon-shadow' ? 'qingshi-combat-actors' : 'qingshi-common-actors',
-    frame,
     silhouette,
     pose,
     telegraph,
@@ -190,6 +146,7 @@ export function resolveEnemyPresentation(input: EnemyPresentationInput): EnemyPr
     flipX: input.facingX < -0.1,
     alpha: silhouette === 'moon-shadow' ? 0.86 : 1,
     isVulnerable,
+    animationStep,
   }
 }
 
@@ -309,8 +266,9 @@ export interface BossPresentationInput {
 }
 
 export interface BossPresentation {
-  readonly textureKey: 'qingshi-combat-actors'
-  readonly frame: number
+  readonly phase: WolfKingPhase
+  readonly attack: WolfKingAttack
+  readonly arrival: boolean
   readonly halo: BossVisualHalo
   readonly telegraph: BossTelegraph
   readonly tint: number
@@ -321,6 +279,8 @@ export interface BossPresentation {
   readonly shake: number
   readonly shadowSplit: boolean
   readonly moonMarkOpen: boolean
+  readonly attackRing: boolean
+  readonly animationStep: number
 }
 
 export function resolveBossPresentation(input: BossPresentationInput): BossPresentation {
@@ -346,25 +306,10 @@ export function resolveBossPresentation(input: BossPresentationInput): BossPrese
     ? 0
     : Math.sin(input.elapsedMs / 28) * (isEnraged ? 1.5 : 0.8) * Math.min(1, impactRemainingMs / 120)
   const animationStep = input.reducedMotion ? 0 : Math.floor(Math.max(0, input.elapsedMs) / 120)
-  const frame = isEnraged
-    ? input.breachRemainingMs > 0
-      ? 11
-      : input.attack === 'assault' || input.attack === 'assault-warning'
-        ? 10 + animationStep % 2
-        : input.attack === 'charge' || input.attack === 'charge-warning'
-          ? 8 + animationStep % 2
-          : 8 + animationStep % 4
-    : isArrival
-      ? 4
-    : input.attack === 'assault' || input.attack === 'assault-warning'
-      ? 7 + animationStep % 2
-      : input.attack === 'charge' || input.attack === 'charge-warning'
-        ? 6 + animationStep % 2
-        : 5 + animationStep % 3
-
   return {
-    textureKey: 'qingshi-combat-actors',
-    frame,
+    phase: input.phase,
+    attack: input.attack,
+    arrival: isArrival,
     halo,
     telegraph,
     tint: isEnraged ? 0xffb4b4 : 0xffffff,
@@ -375,5 +320,474 @@ export function resolveBossPresentation(input: BossPresentationInput): BossPrese
     shake,
     shadowSplit: isEnraged,
     moonMarkOpen: isBreachOpen,
+    attackRing: input.attack === 'assault' || input.attack === 'charge',
+    animationStep,
+  }
+}
+
+export type PlayerVisualPose = 'idle' | 'walk' | 'cast' | 'hit' | 'downed'
+
+export interface PlayerPresentationInput {
+  readonly facingX: number
+  readonly facingY: number
+  readonly isMoving: boolean
+  readonly hitFlashMs: number
+  readonly hitSparkMs: number
+  readonly castPoseMs: number
+  readonly downed: boolean
+  readonly stopBounceRemainingMs: number
+  readonly shieldRemainingMs: number
+  readonly motionPhase?: number
+  readonly elapsedMs: number
+  readonly reducedMotion: boolean
+}
+
+export interface PlayerPresentation {
+  readonly pose: PlayerVisualPose
+  readonly bob: number
+  readonly scaleX: number
+  readonly scaleY: number
+  readonly angle: number
+  readonly flipX: boolean
+  readonly alpha: number
+  readonly tint: number | null
+  readonly hitSparkActive: boolean
+  readonly hitSparkProgress: number
+  readonly motionPhase: number
+}
+
+export function resolvePlayerPresentation(input: PlayerPresentationInput): PlayerPresentation {
+  const pose: PlayerVisualPose = input.downed
+    ? 'downed'
+    : input.hitFlashMs > 0
+      ? 'hit'
+      : input.castPoseMs > 0
+        ? 'cast'
+        : input.isMoving
+          ? 'walk'
+          : 'idle'
+  const motionPhase = input.motionPhase ?? input.elapsedMs / 180
+  const walkBob = input.isMoving && !input.reducedMotion ? Math.sin(motionPhase) * 3 : 0
+  const stopBounce = input.stopBounceRemainingMs > 0 && !input.reducedMotion
+    ? Math.sin((1 - input.stopBounceRemainingMs / 180) * Math.PI) * 4
+    : 0
+  const bob = pose === 'downed' ? 10 : walkBob + stopBounce
+  const squash = pose === 'walk' && !input.reducedMotion
+    ? 1 + Math.sin(motionPhase * 2) * 0.035
+    : pose === 'cast'
+      ? 1.06
+      : 1
+  const angle = pose === 'downed'
+    ? 78
+    : pose === 'hit'
+      ? (input.facingX < 0 ? -10 : 10)
+      : pose === 'cast'
+        ? input.facingX * 7
+        : input.isMoving
+          ? input.facingX * input.facingY * 2
+          : 0
+
+  return {
+    pose,
+    bob,
+    scaleX: squash,
+    scaleY: 1 - (squash - 1) * 0.6,
+    angle,
+    flipX: input.facingX < -0.1,
+    alpha: pose === 'downed' ? 0.66 : 1,
+    tint: input.hitFlashMs > 0
+      ? 0xffffff
+      : input.shieldRemainingMs > 0
+        ? 0xdff8ff
+        : null,
+    hitSparkActive: input.hitSparkMs > 0,
+    hitSparkProgress: Math.max(0, Math.min(1, 1 - input.hitSparkMs / 220)),
+    motionPhase: input.reducedMotion ? 0 : motionPhase,
+  }
+}
+
+export interface ArtifactProjectilePresentationInput {
+  readonly artifactId: ArtifactId
+  readonly elapsedMs: number
+  readonly reducedMotion: boolean
+}
+
+export interface ArtifactProjectilePresentation {
+  readonly signature: ArtifactVisualSignature
+  readonly macroShape: ArtifactMacroShape
+  readonly hasTrail: boolean
+  readonly displayWidth: number
+  readonly displayHeight: number
+  readonly animationStep: number
+}
+
+export function resolveArtifactProjectilePresentation(
+  input: ArtifactProjectilePresentationInput,
+): ArtifactProjectilePresentation {
+  const signature = resolveArtifactVisualSignature(input.artifactId)
+  const animationStep = input.reducedMotion ? 0 : Math.floor(input.elapsedMs / 90)
+  return {
+    signature,
+    macroShape: signature.macroShape,
+    hasTrail: !input.reducedMotion,
+    displayWidth: signature.isHighTier ? 30 : 24,
+    displayHeight: signature.isHighTier ? 34 : 28,
+    animationStep,
+  }
+}
+
+export interface SpellPresentationInput {
+  readonly shieldRemainingMs: number
+  readonly castVisualRemainingMs: number
+  readonly impactPulseRemainingMs: number
+  readonly endVisualRemainingMs: number
+  readonly elapsedMs: number
+  readonly reducedMotion: boolean
+}
+
+export interface SpellPresentation {
+  readonly active: boolean
+  readonly shieldActive: boolean
+  readonly displaySize: number
+  readonly angle: number
+  readonly alpha: number
+  readonly pulseRemainingMs: number
+  readonly pulseProgress: number
+  readonly signature: ArtifactVisualSignature
+  readonly animationStep: number
+}
+
+export function resolveSpellPresentation(input: SpellPresentationInput): SpellPresentation {
+  const active = input.shieldRemainingMs > 0
+    || input.castVisualRemainingMs > 0
+    || input.impactPulseRemainingMs > 0
+    || input.endVisualRemainingMs > 0
+  const pulseRemainingMs = Math.max(
+    input.castVisualRemainingMs,
+    input.impactPulseRemainingMs,
+    input.endVisualRemainingMs,
+  )
+  return {
+    active,
+    shieldActive: input.shieldRemainingMs > 0,
+    displaySize: input.shieldRemainingMs > 0 ? 112 : 94,
+    angle: input.reducedMotion ? 0 : input.elapsedMs / 80,
+    alpha: input.shieldRemainingMs > 0 ? 0.72 : 0.9,
+    pulseRemainingMs,
+    pulseProgress: 1 - pulseRemainingMs / 520,
+    signature: resolveCombatVisualSignature('xuan-guang-hu-shen-jue'),
+    animationStep: input.reducedMotion ? 0 : Math.floor(input.elapsedMs / 120),
+  }
+}
+
+export type CombatFeedbackKind = 'hit' | 'death' | 'dust' | 'breach'
+
+export interface CombatFeedbackInput {
+  readonly kind: CombatFeedbackKind
+  readonly x: number
+  readonly y: number
+  readonly color: number
+  readonly remainingMs: number
+  readonly durationMs: number
+  readonly radius: number
+}
+
+export interface CombatFeedbackPresentation extends CombatFeedbackInput {
+  readonly progress: number
+  readonly alpha: number
+}
+
+export function resolveCombatFeedbackPresentation(
+  input: CombatFeedbackInput,
+  reducedMotion: boolean,
+): CombatFeedbackPresentation {
+  const progress = Math.max(0, Math.min(1, 1 - input.remainingMs / input.durationMs))
+  return {
+    ...input,
+    progress,
+    alpha: reducedMotion ? 0.72 : Math.max(0.12, 1 - progress),
+  }
+}
+
+export type ArtifactFieldPresentation = ArtifactArrayFieldPresentation | ThunderImpactPresentation
+
+export interface ArtifactArrayFieldPresentation {
+  readonly kind: 'array'
+  readonly artifactId: ArtifactId
+  readonly x: number
+  readonly y: number
+  readonly radius: number
+  readonly rotation: number
+  readonly pulseActive: boolean
+  readonly pulseProgress: number
+  readonly signature: ArtifactVisualSignature
+}
+
+export interface ThunderImpactPresentation {
+  readonly kind: 'thunder-impact'
+  readonly artifactId: ArtifactId
+  readonly x: number
+  readonly y: number
+  readonly radius: number
+  readonly progress: number
+  readonly alpha: number
+  readonly signature: ArtifactVisualSignature
+}
+
+export type ArtifactFieldPresentationInput =
+  | {
+      readonly kind: 'array'
+      readonly artifactId: ArtifactId
+      readonly x: number
+      readonly y: number
+      readonly radius: number
+      readonly rotation: number
+      readonly pulseRemainingMs: number
+      readonly pulseDurationMs: number
+    }
+  | {
+      readonly kind: 'thunder-impact'
+      readonly artifactId: ArtifactId
+      readonly x: number
+      readonly y: number
+      readonly radius: number
+      readonly remainingMs: number
+      readonly durationMs: number
+    }
+
+export function resolveArtifactFieldPresentation(
+  input: ArtifactFieldPresentationInput,
+  reducedMotion: boolean,
+): ArtifactFieldPresentation {
+  const signature = resolveArtifactVisualSignature(input.artifactId)
+  if (input.kind === 'array') {
+    return {
+      kind: input.kind,
+      artifactId: input.artifactId,
+      x: input.x,
+      y: input.y,
+      radius: input.radius,
+      rotation: reducedMotion ? 0 : input.rotation,
+      pulseActive: input.pulseRemainingMs > 0,
+      pulseProgress: Math.max(0, Math.min(1, 1 - input.pulseRemainingMs / input.pulseDurationMs)),
+      signature,
+    }
+  }
+
+  const progress = Math.max(0, Math.min(1, 1 - input.remainingMs / input.durationMs))
+  return {
+    kind: input.kind,
+    artifactId: input.artifactId,
+    x: input.x,
+    y: input.y,
+    radius: input.radius,
+    progress,
+    alpha: reducedMotion ? 0.72 : Math.max(0, input.remainingMs / input.durationMs),
+    signature,
+  }
+}
+
+export interface PositionedPlayerPresentation {
+  readonly x: number
+  readonly y: number
+  readonly health: number
+  readonly maxHealth: number
+  readonly presentation: PlayerPresentation
+}
+
+export interface PositionedEnemyPresentation {
+  readonly x: number
+  readonly y: number
+  readonly directionX: number
+  readonly directionY: number
+  readonly radius: number
+  readonly health: number
+  readonly maxHealth: number
+  readonly isElite: boolean
+  readonly presentation: EnemyPresentation
+}
+
+export interface PositionedBossPresentation {
+  readonly x: number
+  readonly y: number
+  readonly radius: number
+  readonly health: number
+  readonly maxHealth: number
+  readonly chargeDirectionX: number
+  readonly chargeDirectionY: number
+  readonly howlDirectionX: number
+  readonly howlDirectionY: number
+  readonly howlProgress: number
+  readonly presentation: BossPresentation
+}
+
+export interface PositionedArtifactProjectilePresentation {
+  readonly x: number
+  readonly y: number
+  readonly velocityX: number
+  readonly velocityY: number
+  readonly artifactId: ArtifactId
+  readonly presentation: ArtifactProjectilePresentation
+}
+
+export interface CombatPresentationFrame {
+  readonly elapsedMs: number
+  readonly reducedMotion: boolean
+  readonly player: PositionedPlayerPresentation
+  readonly enemies: readonly PositionedEnemyPresentation[]
+  readonly boss: PositionedBossPresentation | null
+  readonly projectiles: readonly PositionedArtifactProjectilePresentation[]
+  readonly artifactFields: readonly ArtifactFieldPresentation[]
+  readonly enemyProjectiles: readonly PositionedEnemyProjectilePresentation[]
+  readonly spell: SpellPresentation
+  readonly feedback: readonly CombatFeedbackPresentation[]
+}
+
+export interface PositionedEnemyProjectilePresentation {
+  readonly x: number
+  readonly y: number
+  readonly radius: number
+}
+
+export type CombatPresentationFrameInput = {
+  readonly elapsedMs: number
+  readonly reducedMotion: boolean
+  readonly player: Omit<PlayerPresentationInput, 'elapsedMs' | 'reducedMotion'> & {
+    readonly x: number
+    readonly y: number
+    readonly health: number
+    readonly maxHealth: number
+  }
+  readonly enemies: readonly ({
+    readonly x: number
+    readonly y: number
+    readonly directionX: number
+    readonly directionY: number
+    readonly radius: number
+    readonly health: number
+    readonly maxHealth: number
+    readonly isElite: boolean
+    readonly input: Omit<EnemyPresentationInput, 'elapsedMs' | 'reducedMotion'>
+  })[]
+  readonly boss: ({
+    readonly x: number
+    readonly y: number
+    readonly radius: number
+    readonly health: number
+    readonly maxHealth: number
+    readonly chargeDirectionX: number
+    readonly chargeDirectionY: number
+    readonly howlDirectionX: number
+    readonly howlDirectionY: number
+    readonly howlProgress: number
+    readonly input: Omit<BossPresentationInput, 'elapsedMs' | 'reducedMotion'>
+  }) | null
+  readonly projectiles: readonly ({
+    readonly x: number
+    readonly y: number
+    readonly velocityX: number
+    readonly velocityY: number
+    readonly artifactId: ArtifactId
+  })[]
+  readonly artifactFields: readonly ArtifactFieldPresentationInput[]
+  readonly enemyProjectiles: readonly PositionedEnemyProjectilePresentation[]
+  readonly spell: Omit<SpellPresentationInput, 'elapsedMs' | 'reducedMotion'>
+  readonly bursts: readonly CombatFeedbackInput[]
+}
+
+export function resolveCombatPresentationFrame(input: CombatPresentationFrameInput): CombatPresentationFrame {
+  const player = {
+    ...input.player,
+    presentation: resolvePlayerPresentation({
+      ...input.player,
+      elapsedMs: input.elapsedMs,
+      reducedMotion: input.reducedMotion,
+    }),
+  }
+  const enemies = input.enemies.map((enemy) => ({
+    x: enemy.x,
+    y: enemy.y,
+    directionX: enemy.directionX,
+    directionY: enemy.directionY,
+    radius: enemy.radius,
+    health: enemy.health,
+    maxHealth: enemy.maxHealth,
+    isElite: enemy.isElite,
+    presentation: resolveEnemyPresentation({
+      ...enemy.input,
+      elapsedMs: input.elapsedMs,
+      reducedMotion: input.reducedMotion,
+    }),
+  }))
+  const boss = input.boss === null
+    ? null
+    : {
+        x: input.boss.x,
+        y: input.boss.y,
+        radius: input.boss.radius,
+        health: input.boss.health,
+        maxHealth: input.boss.maxHealth,
+        chargeDirectionX: input.boss.chargeDirectionX,
+        chargeDirectionY: input.boss.chargeDirectionY,
+        howlDirectionX: input.boss.howlDirectionX,
+        howlDirectionY: input.boss.howlDirectionY,
+        howlProgress: input.boss.howlProgress,
+        presentation: resolveBossPresentation({
+          ...input.boss.input,
+          elapsedMs: input.elapsedMs,
+          reducedMotion: input.reducedMotion,
+        }),
+      }
+  const projectiles = input.projectiles.map((projectile) => ({
+    x: projectile.x,
+    y: projectile.y,
+    velocityX: projectile.velocityX,
+    velocityY: projectile.velocityY,
+    artifactId: projectile.artifactId,
+    presentation: resolveArtifactProjectilePresentation({
+      artifactId: projectile.artifactId,
+      elapsedMs: input.elapsedMs,
+      reducedMotion: input.reducedMotion,
+    }),
+  }))
+  const artifactFields = input.artifactFields.map((field) => resolveArtifactFieldPresentation(field, input.reducedMotion))
+  const spell = resolveSpellPresentation({
+    ...input.spell,
+    elapsedMs: input.elapsedMs,
+    reducedMotion: input.reducedMotion,
+  })
+  const feedback = input.bursts.map((burst) => resolveCombatFeedbackPresentation(burst, input.reducedMotion))
+
+  return {
+    elapsedMs: input.elapsedMs,
+    reducedMotion: input.reducedMotion,
+    player,
+    enemies,
+    boss,
+    projectiles,
+    artifactFields,
+    enemyProjectiles: input.enemyProjectiles,
+    spell,
+    feedback,
+  }
+}
+
+export interface CombatPresentationAdapter {
+  present(frame: CombatPresentationFrame): void
+}
+
+export interface RecordingCombatPresentationAdapter extends CombatPresentationAdapter {
+  readonly frames: readonly CombatPresentationFrame[]
+}
+
+export function createRecordingCombatPresentationAdapter(): RecordingCombatPresentationAdapter {
+  const recordedFrames: CombatPresentationFrame[] = []
+  return {
+    get frames() {
+      return recordedFrames.slice()
+    },
+    present(frame) {
+      recordedFrames.push(frame)
+    },
   }
 }

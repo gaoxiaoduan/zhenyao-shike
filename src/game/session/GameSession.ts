@@ -60,6 +60,10 @@ export interface BattleInstrumentationSnapshot {
   readonly radarSpiritRegions: number
   readonly radarLandmarks: number
   readonly presentationCheckpoint: string | null
+  readonly presentationPlayerPose: string
+  readonly presentationArtifactShapes: readonly string[]
+  readonly presentationBossHalo: string | null
+  readonly presentationBossTelegraph: string | null
 }
 
 export type GameSessionDecision =

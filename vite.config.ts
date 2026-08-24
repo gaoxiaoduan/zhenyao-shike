@@ -18,7 +18,7 @@ export default defineConfig(async () => {
     plugins,
     resolve: {
       alias: {
-        phaser: fileURLToPath(new URL('./node_modules/phaser/src/phaser-no-physics.js', import.meta.url)),
+        phaser: fileURLToPath(new URL('./node_modules/phaser/dist/phaser.esm.js', import.meta.url)),
       },
     },
     define: {

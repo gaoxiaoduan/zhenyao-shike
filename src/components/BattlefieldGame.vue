@@ -103,6 +103,10 @@ function recordE2eInstrumentation(snapshot: BattleInstrumentationSnapshot) {
   mount.setAttribute('data-radar-landmarks', String(snapshot.radarLandmarks))
   mount.setAttribute('data-movement-distance', String(snapshot.distanceTravelled))
   mount.setAttribute('data-presentation-checkpoint', snapshot.presentationCheckpoint ?? '')
+  mount.setAttribute('data-presentation-player-pose', snapshot.presentationPlayerPose)
+  mount.setAttribute('data-presentation-artifact-shapes', snapshot.presentationArtifactShapes.join(','))
+  mount.setAttribute('data-presentation-boss-halo', snapshot.presentationBossHalo ?? '')
+  mount.setAttribute('data-presentation-boss-telegraph', snapshot.presentationBossTelegraph ?? '')
 }
 
 const damageSourceLabels: Readonly<Record<DamageSource, string>> = {

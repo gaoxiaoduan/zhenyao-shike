@@ -50,10 +50,17 @@ import {
   type EnemyBehaviorState,
 } from '../domain/enemyBehaviorRules'
 import {
-  resolveArtifactVisualSignature,
-  resolveBossPresentation,
-  resolveCombatVisualSignature,
-  resolveEnemyPresentation,
+  resolveCombatPresentationFrame,
+  type CombatPresentationAdapter,
+  type CombatPresentationFrame,
+  type ArtifactFieldPresentation,
+  type CombatFeedbackPresentation,
+  type PositionedArtifactProjectilePresentation,
+  type PositionedBossPresentation,
+  type PositionedEnemyProjectilePresentation,
+  type PositionedEnemyPresentation,
+  type PositionedPlayerPresentation,
+  type SpellPresentation,
 } from '../domain/combatPresentation'
 import { resolveCombatPresentationCheckpoint } from '../domain/combatPresentationAcceptance'
 import {
@@ -105,7 +112,6 @@ import {
   isWolfKingHowlHit,
   WOLF_KING_ENRAGED_HEALTH_RATIO,
   WOLF_KING_MOON_SHADOW_LIMIT,
-  type WolfKingAttack,
   type WolfKingEncounter,
   type WolfKingEvent,
 } from '../domain/wolfKingRules'
@@ -140,6 +146,69 @@ function resolveCommonActorAtlas(frame: number) {
   return normalizedFrame < COMMON_ACTOR_ATLAS_FRAME_COUNT
     ? { textureKey: 'qingshi-common-actors-left', frame: normalizedFrame }
     : { textureKey: 'qingshi-common-actors-right', frame: normalizedFrame - COMMON_ACTOR_ATLAS_FRAME_COUNT }
+}
+
+const ARTIFACT_COMBAT_ICON_INDEX: Readonly<Record<ArtifactId, number>> = {
+  'qing-feng-jian-xia': 0,
+  'lei-zhuan-fu-ce': 1,
+  'si-xiang-zhen-qi': 2,
+  'fu-yao-yu-yi': 3,
+  'zhu-xie-jian-zhen': 4,
+  'liu-guang-jian-yi': 5,
+  'jiu-xiao-lei-zhen': 6,
+}
+
+function resolveEnemyPresentationFrame(presentation: PositionedEnemyPresentation['presentation']) {
+  if (presentation.silhouette === 'moon-shadow') {
+    return {
+      textureKey: 'qingshi-combat-actors',
+      frame: presentation.pose === 'windup'
+        ? 1
+        : presentation.pose === 'attack'
+          ? 2
+          : presentation.pose === 'recover'
+            ? 3
+            : 0,
+    }
+  }
+
+  const baseFrame = {
+    'boar-demon': 0,
+    'wood-wolf': 10,
+    'mist-moth': 20,
+    'elite-wolf': 30,
+  }[presentation.silhouette]
+  const animationStep = presentation.animationStep
+  const poseFrame = presentation.silhouette === 'elite-wolf' && presentation.pose === 'attack'
+    ? animationStep % 10
+    : presentation.pose === 'approach'
+      ? animationStep % 4
+      : presentation.pose === 'windup'
+        ? 4 + animationStep % 2
+        : presentation.pose === 'attack'
+          ? 6 + animationStep % 2
+          : 8 + animationStep % 2
+  return resolveCommonActorAtlas(baseFrame + poseFrame)
+}
+
+function resolveBossPresentationFrame(presentation: PositionedBossPresentation['presentation']) {
+  const animationStep = presentation.animationStep
+  const frame = presentation.phase === 'enraged'
+    ? presentation.halo === 'breach-open'
+      ? 11
+      : presentation.attack === 'assault' || presentation.attack === 'assault-warning'
+        ? 10 + animationStep % 2
+        : presentation.attack === 'charge' || presentation.attack === 'charge-warning'
+          ? 8 + animationStep % 2
+          : 8 + animationStep % 4
+    : presentation.arrival
+      ? 4
+      : presentation.attack === 'assault' || presentation.attack === 'assault-warning'
+        ? 7 + animationStep % 2
+        : presentation.attack === 'charge' || presentation.attack === 'charge-warning'
+          ? 6 + animationStep % 2
+          : 5 + animationStep % 3
+  return { textureKey: 'qingshi-combat-actors', frame }
 }
 
 const ABANDONED_VILLAGE = { x: 1160, y: 1040, width: 290, height: 190 } as const
@@ -238,7 +307,7 @@ interface CombatBurst {
 
 const DETERMINISTIC_ACCEPTANCE_SEED = 20260818
 
-export class QingShiRidgeScene extends Phaser.Scene {
+export class QingShiRidgeScene extends Phaser.Scene implements CombatPresentationAdapter {
   private readonly reportRuntimeOutput: (event: BattleRuntimeOutput) => void
   private readonly renderScale: number
   private compactRadar: boolean
@@ -301,7 +370,6 @@ export class QingShiRidgeScene extends Phaser.Scene {
   private bossHowlDirectionY = 1
   private bossHowlResolved = true
   private bossBreachRemainingMs = 0
-  private bossAttack: WolfKingAttack = 'none'
   private bossAttackAvoidanceWindowMs = 0
   private bossAttackResolved = false
   private bossImpactRemainingMs = 0
@@ -320,7 +388,6 @@ export class QingShiRidgeScene extends Phaser.Scene {
   private windBladeElapsedMs = 0
   private arrayRotationRad = 0
   private arrayPulseRemainingMs = 0
-  private arrayPulseArtifactId: ArtifactId = 'si-xiang-zhen-qi'
   private presentationElapsedMs = 0
 
   private spawnElapsedMs = 0
@@ -822,7 +889,6 @@ export class QingShiRidgeScene extends Phaser.Scene {
     this.bossHowlDirectionY = 1
     this.bossHowlResolved = true
     this.bossBreachRemainingMs = 0
-    this.bossAttack = 'none'
     this.bossAttackAvoidanceWindowMs = 0
     this.bossAttackResolved = false
     this.bossImpactRemainingMs = 0
@@ -854,7 +920,6 @@ export class QingShiRidgeScene extends Phaser.Scene {
     const result = advanceWolfKingEncounter(this.boss, stepMs)
     this.boss = result.encounter
     this.bossReachedEnraged = this.bossReachedEnraged || this.boss.phase === 'enraged'
-    this.bossAttack = this.boss.attack
     this.bossBreachRemainingMs = this.boss.breachRemainingMs
     this.handleWolfKingEvents(result.events)
     if (this.ended || !this.boss || this.boss.phase === 'arrival' || this.boss.phase === 'defeated') {
@@ -1549,7 +1614,6 @@ export class QingShiRidgeScene extends Phaser.Scene {
 
   private pulseFourArray(stats: ArtifactStats, artifactId: ArtifactId = 'si-xiang-zhen-qi') {
     this.arrayPulseRemainingMs = 320
-    this.arrayPulseArtifactId = artifactId
     this.emitAudio(artifactId === 'zhu-xie-jian-zhen' ? 'sword-array-cast' : 'array-pulse')
     for (let index = this.enemies.length - 1; index >= 0; index -= 1) {
       const enemy = this.enemies[index]
@@ -2169,6 +2233,156 @@ export class QingShiRidgeScene extends Phaser.Scene {
     })
   }
 
+  private resolvePresentationFrame(): CombatPresentationFrame {
+    return resolveCombatPresentationFrame({
+      elapsedMs: this.presentationElapsedMs,
+      reducedMotion: this.reducedMotion,
+      player: {
+        x: this.player.x,
+        y: this.player.y,
+        health: this.player.health,
+        maxHealth: this.player.maxHealth,
+        facingX: this.playerFacingX,
+        facingY: this.playerFacingY,
+        isMoving: this.inputIntent.moveX !== 0 || this.inputIntent.moveY !== 0,
+        hitFlashMs: this.playerHitFlashMs,
+        hitSparkMs: this.playerHitSparkMs,
+        castPoseMs: this.playerCastPoseMs,
+        downed: this.playerDowned,
+        stopBounceRemainingMs: this.playerStopBounceRemainingMs,
+        shieldRemainingMs: this.shieldRemainingMs,
+        motionPhase: this.playerMotionPhase,
+      },
+      enemies: this.enemies.map((enemy) => {
+        const facingX = enemy.behavior.action === 'charge'
+          ? enemy.chargeDirectionX
+          : this.player.x - enemy.x
+        const distance = Phaser.Math.Distance.Between(enemy.x, enemy.y, this.player.x, this.player.y)
+        const directionX = enemy.behavior.action === 'charge'
+          ? enemy.chargeDirectionX
+          : facingX / Math.max(Math.abs(facingX), 1)
+        const directionY = enemy.behavior.action === 'charge'
+          ? enemy.chargeDirectionY
+          : (this.player.y - enemy.y) / Math.max(distance, 1)
+        return {
+          x: enemy.x,
+          y: enemy.y,
+          directionX,
+          directionY,
+          radius: enemy.radius,
+          health: enemy.health,
+          maxHealth: enemy.maxHealth,
+          isElite: enemy.isElite,
+          input: {
+            id: enemy.isMoonShadow ? 'xiaoyue-wolf-king-moon-shadow' : enemy.id as QingShiRidgeEnemyId,
+            isElite: enemy.isElite,
+            isMoonShadow: enemy.isMoonShadow,
+            action: enemy.behavior.action,
+            actionRemainingMs: enemy.behavior.actionRemainingMs,
+            recoveryIsVulnerable: enemy.behavior.recoveryIsVulnerable,
+            hitFlashMs: enemy.hitFlashMs,
+            facingX,
+            attackVisualRemainingMs: enemy.attackVisualRemainingMs,
+          },
+        }
+      }),
+      boss: this.boss && this.bossSpatial && this.boss.phase !== 'defeated'
+        ? {
+            x: this.bossSpatial.x,
+            y: this.bossSpatial.y,
+            radius: this.bossSpatial.radius,
+            health: this.boss.health,
+            maxHealth: this.boss.maxHealth,
+            chargeDirectionX: this.bossSpatial.chargeDirectionX,
+            chargeDirectionY: this.bossSpatial.chargeDirectionY,
+            howlDirectionX: this.bossHowlDirectionX,
+            howlDirectionY: this.bossHowlDirectionY,
+            howlProgress: this.bossHowlElapsedMs / WOLF_KING_HOWL_DURATION_MS,
+            input: {
+              phase: this.boss.phase,
+              attack: this.boss.attack,
+              introRemainingMs: this.boss.introRemainingMs,
+              howlRemainingMs: this.bossHowlRemainingMs,
+              breachRemainingMs: this.bossBreachRemainingMs,
+              impactRemainingMs: this.bossImpactRemainingMs,
+            },
+          }
+        : null,
+      projectiles: this.projectiles.map((projectile) => ({
+        x: projectile.x,
+        y: projectile.y,
+        velocityX: projectile.velocityX,
+        velocityY: projectile.velocityY,
+        artifactId: projectile.artifactId,
+      })),
+      artifactFields: (() => {
+        const arrayArtifactId: ArtifactId = getArtifactLevel(this.inventory, 'si-xiang-zhen-qi') > 0
+          ? 'si-xiang-zhen-qi'
+          : 'zhu-xie-jian-zhen'
+        const arrayLevel = getArtifactLevel(this.inventory, arrayArtifactId)
+        return [
+          ...(arrayLevel > 0
+            ? [{
+                kind: 'array' as const,
+                artifactId: arrayArtifactId,
+                x: this.player.x,
+                y: this.player.y,
+                radius: getArtifactStats(arrayArtifactId, arrayLevel).aoeRadius,
+                rotation: this.arrayRotationRad,
+                pulseRemainingMs: this.arrayPulseRemainingMs,
+                pulseDurationMs: 320,
+              }]
+            : []),
+          ...this.thunderEffects.map((effect) => ({
+            kind: 'thunder-impact' as const,
+            artifactId: effect.artifactId,
+            x: effect.x,
+            y: effect.y,
+            radius: effect.radius,
+            remainingMs: effect.remainingMs,
+            durationMs: 250,
+          })),
+        ]
+      })(),
+      enemyProjectiles: this.enemyProjectiles.map((projectile) => ({
+        x: projectile.x,
+        y: projectile.y,
+        radius: projectile.radius,
+      })),
+      spell: {
+        shieldRemainingMs: this.shieldRemainingMs,
+        castVisualRemainingMs: this.spellCastVisualRemainingMs,
+        impactPulseRemainingMs: this.spellImpactPulseRemainingMs,
+        endVisualRemainingMs: this.spellEndVisualRemainingMs,
+      },
+      bursts: this.combatBursts,
+    })
+  }
+
+  public present(frame: CombatPresentationFrame) {
+    this.renderCombatBursts(frame.feedback, frame.reducedMotion, frame.elapsedMs)
+    this.renderArtifactFields(frame.artifactFields, frame.reducedMotion)
+
+    for (const [index, projectile] of frame.projectiles.entries()) {
+      this.renderArtifactProjectile(projectile, index)
+    }
+    for (let index = frame.projectiles.length; index < this.artifactProjectileSprites.length; index += 1) {
+      this.artifactProjectileSprites[index]?.setVisible(false)
+    }
+    this.renderEnemyProjectiles(frame.enemyProjectiles)
+
+    for (const [index, enemy] of frame.enemies.entries()) {
+      this.renderEnemyPresentation(enemy, index, frame.reducedMotion)
+    }
+
+    if (frame.boss) {
+      this.renderBossPresentation(frame.boss)
+    }
+
+    this.renderSpellPresentation(frame.spell, frame.player, frame.reducedMotion)
+    this.renderPlayerPresentation(frame.player)
+  }
+
   private renderBattlefield() {
     this.graphics.clear()
     this.graphics.fillStyle(0x07130d, 0.24).fillRect(0, 0, WORLD_SIZE, WORLD_SIZE)
@@ -2283,252 +2497,30 @@ export class QingShiRidgeScene extends Phaser.Scene {
       this.graphics.lineBetween(0, coordinate, WORLD_SIZE, coordinate)
     }
 
-    // Render the Four-Array aura for the base artifact or its ascended form.
-    const arrayArtifactId =
-      getArtifactLevel(this.inventory, 'si-xiang-zhen-qi') > 0
-        ? 'si-xiang-zhen-qi'
-        : 'zhu-xie-jian-zhen'
-    const arrayLevel = getArtifactLevel(this.inventory, arrayArtifactId)
-    if (arrayLevel > 0) {
-      const stats = getArtifactStats(arrayArtifactId, arrayLevel)
-      const signature = resolveArtifactVisualSignature(arrayArtifactId)
-      this.graphics.lineStyle(signature.trailWidth, signature.accentColor, 0.45)
-      this.graphics.strokeCircle(this.player.x, this.player.y, stats.aoeRadius)
-
-      // Base 阵旗 keeps four cardinal anchors; 诛邪剑阵 adds a second
-      // silhouette: floating blades that point inward before the pulse.
-      for (let i = 0; i < 4; i++) {
-        const rad = this.arrayRotationRad + (i * Math.PI) / 2
-        const nx = this.player.x + Math.cos(rad) * stats.aoeRadius
-        const ny = this.player.y + Math.sin(rad) * stats.aoeRadius
-        this.graphics.fillStyle(signature.accentColor, 0.8)
-        if (signature.macroShape === 'floating-sword-rain') {
-          this.graphics.fillTriangle(nx, ny - 10, nx + 5, ny + 8, nx - 5, ny + 8)
-          this.graphics.lineStyle(2, 0xfef3c7, 0.8).lineBetween(nx, ny - 5, nx, ny + 5)
-        } else {
-          this.graphics.fillCircle(nx, ny, 4)
-          this.graphics.lineStyle(2, signature.accentColor, 0.7).lineBetween(
-            nx,
-            ny,
-            this.player.x + Math.cos(rad) * (stats.aoeRadius - 18),
-            this.player.y + Math.sin(rad) * (stats.aoeRadius - 18),
-          )
-        }
-      }
-      if (this.arrayPulseRemainingMs > 0) {
-        const pulseSignature = resolveArtifactVisualSignature(this.arrayPulseArtifactId)
-        const pulseProgress = 1 - this.arrayPulseRemainingMs / 320
-        const pulseRadius = Math.max(22, stats.aoeRadius * (0.72 + pulseProgress * 0.28))
-        this.graphics.lineStyle(pulseSignature.trailWidth + 1, pulseSignature.accentColor, 1 - pulseProgress * 0.6)
-        this.graphics.strokeCircle(this.player.x, this.player.y, pulseRadius)
-        if (pulseSignature.macroShape === 'floating-sword-rain') {
-          for (let index = 0; index < 6; index += 1) {
-            const angle = this.arrayRotationRad + index * Math.PI / 3
-            const bladeX = this.player.x + Math.cos(angle) * pulseRadius
-            const bladeY = this.player.y + Math.sin(angle) * pulseRadius
-            this.graphics.fillStyle(pulseSignature.accentColor, 0.9)
-            this.graphics.fillTriangle(
-              bladeX,
-              bladeY,
-              bladeX - Math.sin(angle) * 9,
-              bladeY + Math.cos(angle) * 9,
-              bladeX + Math.sin(angle) * 9,
-              bladeY - Math.cos(angle) * 9,
-            )
-          }
-        }
-      }
-    }
-
     // Render spirits
     for (const spirit of this.spirits) {
       this.graphics.fillStyle(0x6ee7b7, 0.95).fillCircle(spirit.x, spirit.y, 5)
     }
 
-    // Render thunder explosion effects with the source-specific talisman
-    // or ground-array macro shape.
-    for (const effect of this.thunderEffects) {
-      const alpha = Math.max(0, effect.remainingMs / 250)
-      const signature = resolveArtifactVisualSignature(effect.artifactId)
-      this.graphics.fillStyle(signature.accentColor, alpha * 0.22).fillCircle(effect.x, effect.y, effect.radius)
-      this.graphics.lineStyle(signature.trailWidth, signature.accentColor, alpha).strokeCircle(effect.x, effect.y, effect.radius)
-      if (signature.macroShape === 'nine-heavens-thunder-array') {
-        for (let index = 0; index < 4; index += 1) {
-          const angle = index * Math.PI / 2 + this.arrayRotationRad
-          const endX = effect.x + Math.cos(angle) * effect.radius
-          const endY = effect.y + Math.sin(angle) * effect.radius
-          this.graphics.lineStyle(3, 0xfef9c3, alpha)
-          this.graphics.lineBetween(effect.x, effect.y, endX, endY)
-          this.graphics.lineBetween(endX, endY, endX - Math.sin(angle) * 12, endY + Math.cos(angle) * 12)
-        }
-      } else {
-        this.graphics.lineStyle(2, 0xfffbeb, alpha)
-        this.graphics.lineBetween(effect.x - 8, effect.y, effect.x + 8, effect.y)
-        this.graphics.lineBetween(effect.x, effect.y - 8, effect.x, effect.y + 8)
-      }
-    }
+    const presentationFrame = this.resolvePresentationFrame()
+    this.present(presentationFrame)
 
-    this.renderCombatBursts()
-
-    // Render projectiles according to their 法器视觉签名.
-    for (const [index, projectile] of this.projectiles.entries()) {
-      this.renderArtifactProjectile(projectile, index)
-    }
-    for (let index = this.projectiles.length; index < this.artifactProjectileSprites.length; index += 1) {
-      this.artifactProjectileSprites[index]?.setVisible(false)
-    }
-
-    // Slow mist shots stay bright and outlined so their path remains readable in a dense wave.
-    for (const projectile of this.enemyProjectiles) {
-      this.graphics.fillStyle(0xc084fc, 0.7).fillCircle(projectile.x, projectile.y, projectile.radius)
-      this.graphics.lineStyle(2, 0xf5d0fe, 0.9).strokeCircle(projectile.x, projectile.y, projectile.radius + 2)
-    }
-
-    // Render enemies through the shared 职责动作 grammar.
-    for (const enemy of this.enemies) {
-      this.renderEnemyPresentation(enemy)
-    }
-
-    if (this.boss && this.bossSpatial && this.boss.phase !== 'defeated') {
-      this.renderBossPresentation()
-    }
-
-    // Render protective spell aura if cast recently
-    if (this.shieldRemainingMs > 0) {
-      const signature = resolveCombatVisualSignature('xuan-guang-hu-shen-jue')
-      this.graphics.lineStyle(signature.trailWidth + 1, signature.accentColor, 0.7).strokeCircle(this.player.x, this.player.y, 88)
-      this.graphics.fillStyle(signature.accentColor, 0.08).fillCircle(this.player.x, this.player.y, 88)
-      this.graphics.lineStyle(2, signature.accentColor, 0.56).strokeCircle(this.player.x, this.player.y, 62)
-      for (let index = 0; index < 4; index += 1) {
-        const angle = this.playerMotionPhase * 0.015 + index * Math.PI / 2
-        const symbolX = this.player.x + Math.cos(angle) * 62
-        const symbolY = this.player.y + Math.sin(angle) * 62
-        this.graphics.fillStyle(signature.accentColor, 0.85).fillTriangle(
-          symbolX,
-          symbolY - 5,
-          symbolX + 5,
-          symbolY,
-          symbolX,
-          symbolY + 5,
-        )
-      }
-    }
-    const spellVisualActive = this.shieldRemainingMs > 0
-      || this.spellCastVisualRemainingMs > 0
-      || this.spellImpactPulseRemainingMs > 0
-      || this.spellEndVisualRemainingMs > 0
-    if (spellVisualActive) {
-      const spellFrame = 28 + (this.reducedMotion ? 0 : Math.floor(this.presentationElapsedMs / 120) % 4)
-      this.spellPresentationSprite
-        .setTexture('artifact-combat-effects', spellFrame)
-        .setPosition(this.player.x, this.player.y)
-        .setDisplaySize(this.shieldRemainingMs > 0 ? 112 : 94, this.shieldRemainingMs > 0 ? 112 : 94)
-        .setAngle(this.reducedMotion ? 0 : this.presentationElapsedMs / 80)
-        .setAlpha(this.shieldRemainingMs > 0 ? 0.72 : 0.9)
-        .setVisible(true)
-    } else {
-      this.spellPresentationSprite.setVisible(false)
-    }
-    if (this.spellCastVisualRemainingMs > 0 || this.spellImpactPulseRemainingMs > 0 || this.spellEndVisualRemainingMs > 0) {
-      const signature = resolveCombatVisualSignature('xuan-guang-hu-shen-jue')
-      const pulseMs = Math.max(this.spellCastVisualRemainingMs, this.spellImpactPulseRemainingMs, this.spellEndVisualRemainingMs)
-      const progress = 1 - pulseMs / 520
-      const radius = 35 + Math.min(135, Math.max(0, progress) * 170)
-      const alpha = this.reducedMotion ? 0.5 : Math.min(0.9, pulseMs / 220)
-      this.graphics.lineStyle(signature.trailWidth + 1, signature.accentColor, alpha)
-      this.graphics.strokeCircle(this.player.x, this.player.y, radius)
-      this.graphics.lineStyle(2, signature.accentColor, alpha * 0.8)
-      this.graphics.lineBetween(this.player.x - radius, this.player.y, this.player.x + radius, this.player.y)
-      this.graphics.lineBetween(this.player.x, this.player.y - radius, this.player.x, this.player.y + radius)
-    }
-
-    // Render the player as a small pose state machine. The base atlas frame is
-    // deliberately kept crisp; directional bob, cast lean, hit recoil and
-    // downed posture are layered around it so the character still reads in a
-    // crowded battlefield and in reduced-motion mode.
-    const isMoving = this.inputIntent.moveX !== 0 || this.inputIntent.moveY !== 0
-    const playerPose = this.playerDowned
-      ? 'downed'
-      : this.playerHitFlashMs > 0
-        ? 'hit'
-        : this.playerCastPoseMs > 0
-          ? 'cast'
-          : isMoving
-            ? 'walk'
-            : 'idle'
-    const walkBob = isMoving && !this.reducedMotion ? Math.sin(this.playerMotionPhase) * 3 : 0
-    const stopBounce = this.playerStopBounceRemainingMs > 0 && !this.reducedMotion
-      ? Math.sin((1 - this.playerStopBounceRemainingMs / 180) * Math.PI) * 4
-      : 0
-    const bob = playerPose === 'downed' ? 10 : walkBob + stopBounce
-    const squash = playerPose === 'walk' && !this.reducedMotion
-      ? 1 + Math.sin(this.playerMotionPhase * 2) * 0.035
-      : playerPose === 'cast'
-        ? 1.06
-        : 1
-    const poseAngle = playerPose === 'downed'
-      ? 78
-      : playerPose === 'hit'
-        ? (this.playerFacingX < 0 ? -10 : 10)
-        : playerPose === 'cast'
-          ? this.playerFacingX * 7
-          : isMoving
-            ? this.playerFacingX * this.playerFacingY * 2
-            : 0
-    const poseAlpha = playerPose === 'downed' ? 0.66 : 1
-    this.playerSprite
-      .setPosition(this.player.x, this.player.y - bob)
-      .setFlipX(this.playerFacingX < -0.1)
-      .setAngle(poseAngle)
-      .setAlpha(poseAlpha)
-      .setDisplaySize(84 * squash, 84 * (1 - (squash - 1) * 0.6))
-    if (this.playerHitFlashMs > 0) {
-      this.playerSprite.setTint(0xffffff)
-    } else if (this.shieldRemainingMs > 0) {
-      this.playerSprite.setTint(0xdff8ff)
-    } else {
-      this.playerSprite.clearTint()
-    }
-    if (this.playerHitSparkMs > 0) {
-      const sparkProgress = 1 - this.playerHitSparkMs / 220
-      const sparkAlpha = Math.max(0, 1 - sparkProgress)
-      this.graphics.lineStyle(2, 0xfef3c7, sparkAlpha)
-      for (let index = 0; index < 6; index += 1) {
-        const angle = index * Math.PI / 3 + this.playerMotionPhase * 0.04
-        const inner = 28 + sparkProgress * 4
-        const outer = inner + 10 + sparkProgress * 12
-        this.graphics.lineBetween(
-          this.player.x + Math.cos(angle) * inner,
-          this.player.y + Math.sin(angle) * inner,
-          this.player.x + Math.cos(angle) * outer,
-          this.player.y + Math.sin(angle) * outer,
-        )
-      }
-    }
-    if (playerPose === 'downed') {
-      this.graphics.lineStyle(4, 0xfda4af, 0.72).strokeCircle(this.player.x, this.player.y, 44)
-      this.graphics.lineStyle(2, 0xfef3c7, 0.6)
-      this.graphics.lineBetween(this.player.x - 18, this.player.y - 18, this.player.x + 18, this.player.y + 18)
-      this.graphics.lineBetween(this.player.x + 18, this.player.y - 18, this.player.x - 18, this.player.y + 18)
-    }
-    if (isMoving) {
-      this.graphics.fillStyle(0xd6b96d, 0.3).fillEllipse(this.player.x - 10, this.player.y + 26, 12, 5)
-      this.graphics.fillStyle(0xd6b96d, 0.3).fillEllipse(this.player.x + 10, this.player.y + 26, 12, 5)
-    }
-    this.graphics.fillStyle(0x13241d, 0.9).fillRect(this.player.x - 32, this.player.y - 35, 64, 6)
-    this.graphics.fillStyle(0xef9a66, 1).fillRect(this.player.x - 32, this.player.y - 35, 64 * (this.player.health / this.player.maxHealth), 6)
-    this.renderRadar()
+    this.renderRadar(presentationFrame)
   }
 
-  private renderCombatBursts() {
-    for (const burst of this.combatBursts) {
-      const progress = Math.max(0, Math.min(1, 1 - burst.remainingMs / burst.durationMs))
-      const alpha = this.reducedMotion ? 0.72 : Math.max(0.12, 1 - progress)
+  private renderCombatBursts(
+    bursts: readonly CombatFeedbackPresentation[],
+    reducedMotion: boolean,
+    elapsedMs: number,
+  ) {
+    for (const burst of bursts) {
+      const progress = burst.progress
+      const alpha = burst.alpha
       if (burst.kind === 'hit') {
         this.graphics.lineStyle(2, 0xfef3c7, alpha)
         this.graphics.strokeCircle(burst.x, burst.y, burst.radius * (0.7 + progress * 0.3))
         for (let index = 0; index < 4; index += 1) {
-          const angle = index * Math.PI / 2 + this.presentationElapsedMs * 0.01
+          const angle = index * Math.PI / 2 + elapsedMs * 0.01
           const inner = burst.radius * 0.35
           const outer = burst.radius * (0.75 + progress * 0.4)
           this.graphics.lineBetween(
@@ -2543,7 +2535,7 @@ export class QingShiRidgeScene extends Phaser.Scene {
       if (burst.kind === 'death') {
         this.graphics.lineStyle(2, burst.color, alpha)
         this.graphics.strokeCircle(burst.x, burst.y, burst.radius * (0.55 + progress * 0.65))
-        if (!this.reducedMotion) {
+        if (!reducedMotion) {
           for (let index = 0; index < 6; index += 1) {
             const angle = index * Math.PI / 3
             const distance = burst.radius * (0.45 + progress)
@@ -2572,40 +2564,105 @@ export class QingShiRidgeScene extends Phaser.Scene {
     }
   }
 
-  private renderArtifactProjectile(projectile: Projectile, index: number) {
-    const signature = resolveArtifactVisualSignature(projectile.artifactId)
+  private renderArtifactFields(fields: readonly ArtifactFieldPresentation[], reducedMotion: boolean) {
+    for (const field of fields) {
+      if (field.kind === 'array') {
+        this.graphics.lineStyle(field.signature.trailWidth, field.signature.accentColor, 0.45)
+        this.graphics.strokeCircle(field.x, field.y, field.radius)
+        for (let index = 0; index < 4; index += 1) {
+          const angle = field.rotation + (index * Math.PI) / 2
+          const anchorX = field.x + Math.cos(angle) * field.radius
+          const anchorY = field.y + Math.sin(angle) * field.radius
+          this.graphics.fillStyle(field.signature.accentColor, 0.8)
+          if (field.signature.macroShape === 'floating-sword-rain') {
+            this.graphics.fillTriangle(anchorX, anchorY - 10, anchorX + 5, anchorY + 8, anchorX - 5, anchorY + 8)
+            this.graphics.lineStyle(2, 0xfef3c7, 0.8).lineBetween(anchorX, anchorY - 5, anchorX, anchorY + 5)
+          } else {
+            this.graphics.fillCircle(anchorX, anchorY, 4)
+            this.graphics.lineStyle(2, field.signature.accentColor, 0.7).lineBetween(
+              anchorX,
+              anchorY,
+              field.x + Math.cos(angle) * (field.radius - 18),
+              field.y + Math.sin(angle) * (field.radius - 18),
+            )
+          }
+        }
+        if (field.pulseActive) {
+          const pulseRadius = Math.max(22, field.radius * (0.72 + field.pulseProgress * 0.28))
+          const pulseAlpha = reducedMotion ? 0.72 : 1 - field.pulseProgress * 0.6
+          this.graphics.lineStyle(field.signature.trailWidth + 1, field.signature.accentColor, pulseAlpha)
+          this.graphics.strokeCircle(field.x, field.y, pulseRadius)
+          if (field.signature.macroShape === 'floating-sword-rain') {
+            for (let index = 0; index < 6; index += 1) {
+              const angle = field.rotation + index * Math.PI / 3
+              const bladeX = field.x + Math.cos(angle) * pulseRadius
+              const bladeY = field.y + Math.sin(angle) * pulseRadius
+              this.graphics.fillStyle(field.signature.accentColor, 0.9)
+              this.graphics.fillTriangle(
+                bladeX,
+                bladeY,
+                bladeX - Math.sin(angle) * 9,
+                bladeY + Math.cos(angle) * 9,
+                bladeX + Math.sin(angle) * 9,
+                bladeY - Math.cos(angle) * 9,
+              )
+            }
+          }
+        }
+        continue
+      }
+
+      this.graphics.fillStyle(field.signature.accentColor, field.alpha * 0.22).fillCircle(field.x, field.y, field.radius)
+      this.graphics.lineStyle(field.signature.trailWidth, field.signature.accentColor, field.alpha).strokeCircle(field.x, field.y, field.radius)
+      if (field.signature.macroShape === 'nine-heavens-thunder-array') {
+        for (let index = 0; index < 4; index += 1) {
+          const angle = index * Math.PI / 2
+          const endX = field.x + Math.cos(angle) * field.radius
+          const endY = field.y + Math.sin(angle) * field.radius
+          this.graphics.lineStyle(3, 0xfef9c3, field.alpha)
+          this.graphics.lineBetween(field.x, field.y, endX, endY)
+          this.graphics.lineBetween(endX, endY, endX - Math.sin(angle) * 12, endY + Math.cos(angle) * 12)
+        }
+      } else {
+        this.graphics.lineStyle(2, 0xfffbeb, field.alpha)
+        this.graphics.lineBetween(field.x - 8, field.y, field.x + 8, field.y)
+        this.graphics.lineBetween(field.x, field.y - 8, field.x, field.y + 8)
+      }
+    }
+  }
+
+  private renderEnemyProjectiles(projectiles: readonly PositionedEnemyProjectilePresentation[]) {
+    for (const projectile of projectiles) {
+      this.graphics.fillStyle(0xc084fc, 0.7).fillCircle(projectile.x, projectile.y, projectile.radius)
+      this.graphics.lineStyle(2, 0xf5d0fe, 0.9).strokeCircle(projectile.x, projectile.y, projectile.radius + 2)
+    }
+  }
+
+  private renderArtifactProjectile(projectile: PositionedArtifactProjectilePresentation, index: number) {
+    const { presentation } = projectile
+    const { signature } = presentation
+    const combatFrame = ARTIFACT_COMBAT_ICON_INDEX[projectile.artifactId] * 4 + presentation.animationStep % 4
     const velocityLength = Math.hypot(projectile.velocityX, projectile.velocityY) || 1
     const directionX = projectile.velocityX / velocityLength
     const directionY = projectile.velocityY / velocityLength
     const normalX = -directionY
     const normalY = directionX
-    const trailLength = this.reducedMotion ? 0 : 1
+    const trailLength = presentation.hasTrail ? 1 : 0
     const tailX = projectile.x - projectile.velocityX * 0.035 * trailLength
     const tailY = projectile.y - projectile.velocityY * 0.035 * trailLength
     const accent = signature.accentColor
-    const iconIndex = {
-      'qing-feng-jian-xia': 0,
-      'lei-zhuan-fu-ce': 1,
-      'si-xiang-zhen-qi': 2,
-      'fu-yao-yu-yi': 3,
-      'zhu-xie-jian-zhen': 4,
-      'liu-guang-jian-yi': 5,
-      'jiu-xiao-lei-zhen': 6,
-    }[projectile.artifactId]
-    const animationFrame = this.reducedMotion ? 0 : Math.floor(this.presentationElapsedMs / 90) % 4
-    const combatFrame = iconIndex * 4 + animationFrame
     const icon = this.artifactProjectileSprites[index]
       ?? (this.artifactProjectileSprites[index] = this.add.image(projectile.x, projectile.y, 'artifact-combat-effects', combatFrame))
     icon
       .setTexture('artifact-combat-effects', combatFrame)
       .setPosition(projectile.x, projectile.y)
-      .setDisplaySize(signature.isHighTier ? 30 : 24, signature.isHighTier ? 34 : 28)
+      .setDisplaySize(presentation.displayWidth, presentation.displayHeight)
       .setRotation(Math.atan2(directionY, directionX) + Math.PI / 2)
-      .setAlpha(this.reducedMotion ? 0.9 : 1)
+      .setAlpha(presentation.hasTrail ? 1 : 0.9)
       .setDepth(5)
       .setVisible(true)
 
-    if (!this.reducedMotion) {
+    if (presentation.hasTrail) {
       this.graphics.lineStyle(signature.trailWidth, accent, 0.9).lineBetween(tailX, tailY, projectile.x, projectile.y)
     }
     if (signature.macroShape === 'flying-sword' || signature.macroShape === 'floating-sword-rain') {
@@ -2659,43 +2716,32 @@ export class QingShiRidgeScene extends Phaser.Scene {
     }
   }
 
-  private renderEnemyPresentation(enemy: Enemy) {
-    const facingX = enemy.behavior.action === 'charge'
-      ? enemy.chargeDirectionX
-      : this.player.x - enemy.x
-    const presentation = resolveEnemyPresentation({
-      id: enemy.isMoonShadow ? 'xiaoyue-wolf-king-moon-shadow' : enemy.id as QingShiRidgeEnemyId,
-      isElite: enemy.isElite,
-      isMoonShadow: enemy.isMoonShadow,
-      action: enemy.behavior.action,
-      actionRemainingMs: enemy.behavior.actionRemainingMs,
-      recoveryIsVulnerable: enemy.behavior.recoveryIsVulnerable,
-      hitFlashMs: enemy.hitFlashMs,
-      facingX,
-      elapsedMs: this.presentationElapsedMs,
-      reducedMotion: this.reducedMotion,
-      attackVisualRemainingMs: enemy.attackVisualRemainingMs,
-    })
-    const texture = presentation.textureKey === 'qingshi-common-actors'
-      ? resolveCommonActorAtlas(presentation.frame)
-      : { textureKey: presentation.textureKey, frame: presentation.frame }
-    enemy.sprite
+  private renderEnemyPresentation(
+    enemy: PositionedEnemyPresentation,
+    index: number,
+    reducedMotion: boolean,
+  ) {
+    const presentation = enemy.presentation
+    const sprite = this.enemies[index]?.sprite
+    if (!sprite) {
+      return
+    }
+    const texture = resolveEnemyPresentationFrame(presentation)
+    sprite
       .setTexture(texture.textureKey, texture.frame)
       .setPosition(enemy.x, enemy.y - presentation.bob)
       .setFlipX(presentation.flipX)
       .setAngle(presentation.angle)
       .setAlpha(presentation.alpha)
       .setDisplaySize(enemy.radius * 4.8 * presentation.scale, enemy.radius * 4.8 * presentation.scale)
-    if (presentation.tint !== null && (!this.reducedMotion || presentation.tint !== 0xffffff)) {
-      enemy.sprite.setTint(presentation.tint)
+    if (presentation.tint !== null && (!reducedMotion || presentation.tint !== 0xffffff)) {
+      sprite.setTint(presentation.tint)
     } else {
-      enemy.sprite.clearTint()
+      sprite.clearTint()
     }
 
-    const directionX = enemy.behavior.action === 'charge' ? enemy.chargeDirectionX : facingX / Math.max(Math.abs(facingX), 1)
-    const directionY = enemy.behavior.action === 'charge'
-      ? enemy.chargeDirectionY
-      : (this.player.y - enemy.y) / Math.max(Phaser.Math.Distance.Between(enemy.x, enemy.y, this.player.x, this.player.y), 1)
+    const directionX = enemy.directionX
+    const directionY = enemy.directionY
     if (presentation.telegraph === 'charge-lane') {
       if (presentation.silhouette !== 'boar-demon') {
         const warningLength = presentation.silhouette === 'elite-wolf' ? 250 : 150
@@ -2742,24 +2788,17 @@ export class QingShiRidgeScene extends Phaser.Scene {
     }
   }
 
-  private renderBossPresentation() {
-    if (!this.boss || !this.bossSpatial) {
+  private renderBossPresentation(boss: PositionedBossPresentation) {
+    const bossSpatial = this.bossSpatial
+    if (!bossSpatial) {
       return
     }
-    const presentation = resolveBossPresentation({
-      phase: this.boss.phase,
-      attack: this.boss.attack,
-      introRemainingMs: this.boss.introRemainingMs,
-      howlRemainingMs: this.bossHowlRemainingMs,
-      breachRemainingMs: this.bossBreachRemainingMs,
-      impactRemainingMs: this.bossImpactRemainingMs,
-      elapsedMs: this.presentationElapsedMs,
-      reducedMotion: this.reducedMotion,
-    })
-    const x = this.bossSpatial.x + presentation.shake
-    const y = this.bossSpatial.y + presentation.shake
-    this.bossSpatial.sprite
-      .setTexture(presentation.textureKey, presentation.frame)
+    const { presentation } = boss
+    const texture = resolveBossPresentationFrame(presentation)
+    const x = boss.x + presentation.shake
+    const y = boss.y + presentation.shake
+    bossSpatial.sprite
+      .setTexture(texture.textureKey, texture.frame)
       .setPosition(x, y)
       .setAlpha(presentation.alpha)
       .setTint(presentation.tint)
@@ -2770,19 +2809,19 @@ export class QingShiRidgeScene extends Phaser.Scene {
     if (presentation.halo === 'arrival-pulse') {
       this.graphics.strokeCircle(x, y, 96)
     } else if (presentation.halo === 'cracked-moon') {
-      this.graphics.arc(x, y, this.bossSpatial.radius + 18, -2.6, -0.45)
-      this.graphics.arc(x, y, this.bossSpatial.radius + 18, 0.45, 2.6)
+      this.graphics.arc(x, y, boss.radius + 18, -2.6, -0.45)
+      this.graphics.arc(x, y, boss.radius + 18, 0.45, 2.6)
       this.graphics.lineStyle(3, 0x4c1d95, 0.8)
       this.graphics.lineBetween(x - 34, y - 8, x - 9, y + 4)
       this.graphics.lineBetween(x + 8, y - 4, x + 32, y + 12)
     } else if (presentation.halo === 'breach-open') {
-      this.graphics.strokeCircle(x, y, this.bossSpatial.radius + 26)
+      this.graphics.strokeCircle(x, y, boss.radius + 26)
       this.graphics.lineStyle(3, 0xfef08a, 0.95)
       this.graphics.fillStyle(0xfef08a, 0.24).fillTriangle(x, y - 28, x - 12, y - 3, x + 12, y - 3)
       this.graphics.lineBetween(x - 14, y - 12, x + 14, y - 12)
     } else {
-      this.graphics.arc(x, y, this.bossSpatial.radius + 18, -2.7, -0.4)
-      this.graphics.arc(x, y, this.bossSpatial.radius + 18, 0.4, 2.7)
+      this.graphics.arc(x, y, boss.radius + 18, -2.7, -0.4)
+      this.graphics.arc(x, y, boss.radius + 18, 0.4, 2.7)
     }
     if (presentation.shadowSplit) {
       this.graphics.lineStyle(3, 0x312e81, 0.7)
@@ -2790,10 +2829,10 @@ export class QingShiRidgeScene extends Phaser.Scene {
       this.graphics.lineBetween(x + 26, y + 48, x + 58, y + 36)
     }
     if (presentation.telegraph === 'howl-sector') {
-      const howlProgress = Math.max(0, Math.min(1, this.bossHowlElapsedMs / WOLF_KING_HOWL_DURATION_MS))
+      const howlProgress = Math.max(0, Math.min(1, boss.howlProgress))
       const effectRadius = 24 + howlProgress * (WOLF_KING_HOWL_RADIUS - 24)
-      const effectAlpha = this.bossHowlRemainingMs / WOLF_KING_HOWL_DURATION_MS
-      const safeGapAngle = Math.atan2(this.bossHowlDirectionY, this.bossHowlDirectionX)
+      const effectAlpha = Math.max(0, 1 - howlProgress)
+      const safeGapAngle = Math.atan2(boss.howlDirectionY, boss.howlDirectionX)
       this.graphics.lineStyle(5, 0xfda4af, effectAlpha)
       this.graphics.arc(x, y, effectRadius, safeGapAngle + WOLF_KING_HOWL_SAFE_GAP_HALF_ANGLE, safeGapAngle + Math.PI * 2 - WOLF_KING_HOWL_SAFE_GAP_HALF_ANGLE)
       this.graphics.lineStyle(2, 0xa7f3d0, effectAlpha)
@@ -2802,24 +2841,119 @@ export class QingShiRidgeScene extends Phaser.Scene {
       const warningLength = presentation.telegraph === 'assault-lane' ? 210 : 260
       const warningColor = presentation.telegraph === 'assault-lane' ? 0xf472b6 : 0xfbbf24
       this.graphics.lineStyle(5, warningColor, 0.9)
-      this.graphics.lineBetween(x, y, x + this.bossSpatial.chargeDirectionX * warningLength, y + this.bossSpatial.chargeDirectionY * warningLength)
+      this.graphics.lineBetween(x, y, x + boss.chargeDirectionX * warningLength, y + boss.chargeDirectionY * warningLength)
       this.graphics.fillStyle(warningColor, 0.24).fillTriangle(
-        x + this.bossSpatial.chargeDirectionX * warningLength,
-        y + this.bossSpatial.chargeDirectionY * warningLength,
-        x + this.bossSpatial.chargeDirectionX * (warningLength - 24) - this.bossSpatial.chargeDirectionY * 12,
-        y + this.bossSpatial.chargeDirectionY * (warningLength - 24) + this.bossSpatial.chargeDirectionX * 12,
-        x + this.bossSpatial.chargeDirectionX * (warningLength - 24) + this.bossSpatial.chargeDirectionY * 12,
-        y + this.bossSpatial.chargeDirectionY * (warningLength - 24) - this.bossSpatial.chargeDirectionX * 12,
+        x + boss.chargeDirectionX * warningLength,
+        y + boss.chargeDirectionY * warningLength,
+        x + boss.chargeDirectionX * (warningLength - 24) - boss.chargeDirectionY * 12,
+        y + boss.chargeDirectionY * (warningLength - 24) + boss.chargeDirectionX * 12,
+        x + boss.chargeDirectionX * (warningLength - 24) + boss.chargeDirectionY * 12,
+        y + boss.chargeDirectionY * (warningLength - 24) - boss.chargeDirectionX * 12,
       )
     }
-    if (this.bossAttack === 'assault' || this.bossAttack === 'charge') {
-      this.graphics.lineStyle(3, 0xfda4af, 0.55).strokeCircle(x, y, this.bossSpatial.radius + 16)
+    if (presentation.attackRing) {
+      this.graphics.lineStyle(3, 0xfda4af, 0.55).strokeCircle(x, y, boss.radius + 16)
     }
     this.graphics.fillStyle(0x1c101c, 0.9).fillRect(x - 46, y - 58, 92, 7)
-    this.graphics.fillStyle(presentation.accentColor, 1).fillRect(x - 46, y - 58, 92 * (this.boss.health / this.boss.maxHealth), 7)
+    this.graphics.fillStyle(presentation.accentColor, 1).fillRect(x - 46, y - 58, 92 * (boss.health / boss.maxHealth), 7)
   }
 
-  private renderRadar() {
+  private renderSpellPresentation(
+    spell: SpellPresentation,
+    player: PositionedPlayerPresentation,
+    reducedMotion: boolean,
+  ) {
+    if (spell.shieldActive) {
+      const signature = spell.signature
+      this.graphics.lineStyle(signature.trailWidth + 1, signature.accentColor, 0.7).strokeCircle(player.x, player.y, 88)
+      this.graphics.fillStyle(signature.accentColor, 0.08).fillCircle(player.x, player.y, 88)
+      this.graphics.lineStyle(2, signature.accentColor, 0.56).strokeCircle(player.x, player.y, 62)
+      for (let index = 0; index < 4; index += 1) {
+        const angle = player.presentation.motionPhase * 0.015 + index * Math.PI / 2
+        const symbolX = player.x + Math.cos(angle) * 62
+        const symbolY = player.y + Math.sin(angle) * 62
+        this.graphics.fillStyle(signature.accentColor, 0.85).fillTriangle(
+          symbolX,
+          symbolY - 5,
+          symbolX + 5,
+          symbolY,
+          symbolX,
+          symbolY + 5,
+        )
+      }
+    }
+    if (spell.active) {
+      this.spellPresentationSprite
+        .setTexture('artifact-combat-effects', 28 + spell.animationStep % 4)
+        .setPosition(player.x, player.y)
+        .setDisplaySize(spell.displaySize, spell.displaySize)
+        .setAngle(spell.angle)
+        .setAlpha(spell.alpha)
+        .setVisible(true)
+    } else {
+      this.spellPresentationSprite.setVisible(false)
+    }
+    if (spell.pulseRemainingMs > 0) {
+      const { signature } = spell
+      const radius = 35 + Math.min(135, Math.max(0, spell.pulseProgress) * 170)
+      const alpha = reducedMotion ? 0.5 : Math.min(0.9, spell.pulseRemainingMs / 220)
+      this.graphics.lineStyle(signature.trailWidth + 1, signature.accentColor, alpha)
+      this.graphics.strokeCircle(player.x, player.y, radius)
+      this.graphics.lineStyle(2, signature.accentColor, alpha * 0.8)
+      this.graphics.lineBetween(player.x - radius, player.y, player.x + radius, player.y)
+      this.graphics.lineBetween(player.x, player.y - radius, player.x, player.y + radius)
+    }
+  }
+
+  private renderPlayerPresentation(player: PositionedPlayerPresentation) {
+    const { presentation } = player
+    this.playerSprite
+      .setPosition(player.x, player.y - presentation.bob)
+      .setFlipX(presentation.flipX)
+      .setAngle(presentation.angle)
+      .setAlpha(presentation.alpha)
+      .setDisplaySize(84 * presentation.scaleX, 84 * presentation.scaleY)
+    if (presentation.tint !== null) {
+      this.playerSprite.setTint(presentation.tint)
+    } else {
+      this.playerSprite.clearTint()
+    }
+    if (presentation.hitSparkActive) {
+      const sparkProgress = presentation.hitSparkProgress
+      const sparkAlpha = Math.max(0, 1 - sparkProgress)
+      this.graphics.lineStyle(2, 0xfef3c7, sparkAlpha)
+      for (let index = 0; index < 6; index += 1) {
+        const angle = index * Math.PI / 3 + player.presentation.motionPhase * 0.04
+        const inner = 28 + sparkProgress * 4
+        const outer = inner + 10 + sparkProgress * 12
+        this.graphics.lineBetween(
+          player.x + Math.cos(angle) * inner,
+          player.y + Math.sin(angle) * inner,
+          player.x + Math.cos(angle) * outer,
+          player.y + Math.sin(angle) * outer,
+        )
+      }
+    }
+    if (presentation.pose === 'downed') {
+      this.graphics.lineStyle(4, 0xfda4af, 0.72).strokeCircle(player.x, player.y, 44)
+      this.graphics.lineStyle(2, 0xfef3c7, 0.6)
+      this.graphics.lineBetween(player.x - 18, player.y - 18, player.x + 18, player.y + 18)
+      this.graphics.lineBetween(player.x + 18, player.y - 18, player.x - 18, player.y + 18)
+    }
+    if (presentation.pose === 'walk') {
+      this.graphics.fillStyle(0xd6b96d, 0.3).fillEllipse(player.x - 10, player.y + 26, 12, 5)
+      this.graphics.fillStyle(0xd6b96d, 0.3).fillEllipse(player.x + 10, player.y + 26, 12, 5)
+    }
+    this.graphics.fillStyle(0x13241d, 0.9).fillRect(player.x - 32, player.y - 35, 64, 6)
+    this.graphics.fillStyle(0xef9a66, 1).fillRect(
+      player.x - 32,
+      player.y - 35,
+      64 * (player.health / player.maxHealth),
+      6,
+    )
+  }
+
+  private renderRadar(presentationFrame: CombatPresentationFrame) {
     const radar = this.radarGraphics
     radar.clear()
 
@@ -2942,6 +3076,10 @@ export class QingShiRidgeScene extends Phaser.Scene {
       radarSpiritRegions: spiritCells.length,
       radarLandmarks: landmarks.length,
       presentationCheckpoint: resolveCombatPresentationCheckpoint(this.progress.elapsedMs)?.id ?? null,
+      presentationPlayerPose: presentationFrame.player.presentation.pose,
+      presentationArtifactShapes: presentationFrame.projectiles.map(({ presentation }) => presentation.macroShape),
+      presentationBossHalo: presentationFrame.boss?.presentation.halo ?? null,
+      presentationBossTelegraph: presentationFrame.boss?.presentation.telegraph ?? null,
     })
   }
 }
