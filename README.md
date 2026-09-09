@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://zhenyao.33338888.xyz"><strong>在线试玩</strong></a>
   ·
-  <a href="https://github.com/gaoxiaoduan/game-phaser/issues">反馈问题</a>
+  <a href="https://github.com/gaoxiaoduan/zhenyao-shike/issues">反馈问题</a>
 </p>
 
 一款原创修仙题材的像素生存构筑游戏。在青石岭的妖潮中走位求生，收集灵蕴，搭配法器，从勉强求生到横扫妖群，最终迎战啸月狼王。
@@ -41,8 +41,8 @@
 准备 Node.js **24** 和 pnpm：
 
 ```bash
-git clone https://github.com/gaoxiaoduan/game-phaser.git
-cd game-phaser
+git clone https://github.com/gaoxiaoduan/zhenyao-shike.git
+cd zhenyao-shike
 pnpm install
 pnpm dev
 ```
@@ -74,4 +74,4 @@ pnpm run deploy
 
 ## 反馈与参与
 
-欢迎试玩，也欢迎通过 [GitHub Issues](https://github.com/gaoxiaoduan/game-phaser/issues) 分享建议、报告问题。反馈时附上浏览器、设备和复现步骤；截图或录像也很有帮助。
+欢迎试玩，也欢迎通过 [GitHub Issues](https://github.com/gaoxiaoduan/zhenyao-shike/issues) 分享建议、报告问题。反馈时附上浏览器、设备和复现步骤；截图或录像也很有帮助。
